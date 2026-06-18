@@ -1,167 +1,161 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
+import { createSupabaseClient } from "@/lib/supabase";
 import {
-  Home,
-  FileText,
-  CreditCard,
-  MessageCircle,
-  User,
-  LogOut,
-  Menu,
-  X,
+  LayoutDashboard, FileText, CreditCard,
+  AlertCircle, User, LogOut, Menu, X, Home,
 } from "lucide-react";
 
 const NAV_ITEMS = [
-  { href: "/tenant/dashboard", label: "Dashboard", icon: Home },
-  { href: "/tenant/bills", label: "Bills", icon: FileText },
-  { href: "/tenant/payments", label: "Payments", icon: CreditCard },
-  { href: "/tenant/concerns", label: "Concerns", icon: MessageCircle },
-  { href: "/tenant/profile", label: "Profile", icon: User },
+  { href: "/tenant/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/tenant/bills",     label: "Bills",      icon: FileText },
+  { href: "/tenant/payments",  label: "Payments",   icon: CreditCard },
+  { href: "/tenant/concerns",  label: "Concerns",   icon: AlertCircle },
+  { href: "/tenant/profile",   label: "Profile",    icon: User },
 ];
 
 export default function TenantLayout({ children }: { children: React.ReactNode }) {
-  const router = useRouter();
+  const router   = useRouter();
   const pathname = usePathname();
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const supabase = createSupabaseClient();
+  const [menuOpen,     setMenuOpen]     = useState(false);
   const [isAuthorized, setIsAuthorized] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [userName, setUserName] = useState("Tenant");
+  const [isLoading,    setIsLoading]    = useState(true);
+  const [tenantName,   setTenantName]   = useState("");
 
   useEffect(() => {
-    // Check tenant session on mount
-    // This is a placeholder - should verify Supabase auth and tenant role
     const checkAuth = async () => {
-      try {
-        // For now, assume authenticated
-        setIsAuthorized(true);
-        setUserName("John Doe"); // Placeholder
-      } catch (error) {
-        router.push("/login");
-      } finally {
-        setIsLoading(false);
-      }
-    };
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { router.push("/login"); return; }
 
+      const { data: userData } = await supabase
+        .from("users")
+        .select("full_name, registration_status, role")
+        .eq("id", session.user.id)
+        .single();
+
+      if (!userData || userData.role !== "tenant" || userData.registration_status !== "approved") {
+        await supabase.auth.signOut();
+        router.push("/login");
+        return;
+      }
+
+      setTenantName(userData.full_name ?? "");
+      setIsAuthorized(true);
+      setIsLoading(false);
+    };
     checkAuth();
   }, [router]);
 
-  if (isLoading) {
-    return (
-      <div className="min-h-dvh bg-slate-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-12 h-12 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-slate-600">Loading...</p>
-        </div>
+  if (isLoading) return (
+    <div className="min-h-dvh bg-slate-50 flex items-center justify-center">
+      <div className="text-center">
+        <div className="spinner mx-auto mb-3" />
+        <p className="text-sm text-slate-500">Loading your portal…</p>
       </div>
-    );
-  }
+    </div>
+  );
 
-  if (!isAuthorized) {
-    return null;
-  }
+  if (!isAuthorized) return null;
 
-  const handleLogout = () => {
-    localStorage.removeItem("tenantSession");
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
     router.push("/login");
   };
 
+  const isActive = (href: string) => pathname.startsWith(href);
+
   return (
-    <div className="min-h-dvh bg-slate-50 flex flex-col md:flex-row">
-      {/* Mobile Header */}
-      <div className="md:hidden bg-white border-b border-slate-200 sticky top-0 z-50 safe-top">
-        <div className="flex items-center justify-between px-5 py-4">
-          <div>
-            <h1 className="font-bold text-slate-900 text-sm">RJ BoardHouse</h1>
-            <p className="text-caption text-slate-500">{userName}</p>
+    <div className="min-h-dvh bg-[#f4f6f9] flex flex-col md:flex-row">
+
+      {/* ── Desktop Sidebar ── */}
+      <aside className="hidden md:flex sidebar">
+        {/* Brand */}
+        <div className="sidebar-brand">
+          <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center flex-shrink-0">
+            <Home className="w-4 h-4 text-white" />
+          </div>
+          <div className="min-w-0">
+            <p className="font-bold text-sm text-slate-900 leading-tight truncate">
+              {tenantName || "Tenant"}
+            </p>
+            <p className="text-xs text-slate-400">Tenant Portal</p>
+          </div>
+        </div>
+
+        {/* Nav */}
+        <nav className="sidebar-nav space-y-0.5">
+          {NAV_ITEMS.map(({ href, label, icon: Icon }) => (
+            <Link
+              key={href}
+              href={href}
+              className={`nav-item ${isActive(href) ? "active" : ""}`}
+            >
+              <Icon className="nav-icon" />
+              {label}
+            </Link>
+          ))}
+        </nav>
+
+        {/* Footer */}
+        <div className="sidebar-footer">
+          <button onClick={handleLogout} className="nav-item nav-item-danger w-full">
+            <LogOut className="nav-icon" />
+            Sign out
+          </button>
+        </div>
+      </aside>
+
+      {/* ── Mobile Header ── */}
+      <header className="md:hidden bg-white border-b border-slate-200 sticky top-0 z-50 safe-top">
+        <div className="flex items-center justify-between px-4 py-3.5">
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center">
+              <Home className="w-3.5 h-3.5 text-white" />
+            </div>
+            <span className="font-bold text-sm text-slate-900 truncate max-w-[140px]">
+              {tenantName || "Tenant Portal"}
+            </span>
           </div>
           <button
-            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-            className="btn btn-ghost btn-sm"
+            onClick={() => setMenuOpen(!menuOpen)}
+            className="btn btn-ghost btn-icon"
           >
-            {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            {menuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>
         </div>
-      </div>
 
-      {/* Mobile Navigation */}
-      {isMobileMenuOpen && (
-        <div className="md:hidden bg-white border-b border-slate-200 pb-4">
-          <nav className="px-2 space-y-1">
-            {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
-              const isActive = pathname.startsWith(href);
-              return (
-                <Link
-                  key={href}
-                  href={href}
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
-                    isActive ? "bg-blue-50 text-blue-600" : "text-slate-600 hover:bg-slate-50"
-                  }`}
-                >
-                  <Icon className="w-5 h-5" />
-                  <span className="font-medium text-sm">{label}</span>
-                </Link>
-              );
-            })}
-          </nav>
-          <button
-            onClick={handleLogout}
-            className="flex items-center gap-3 px-4 py-3 text-red-600 hover:bg-red-50 w-full text-left m-2 rounded-lg mt-4"
-          >
-            <LogOut className="w-5 h-5" />
-            <span className="font-medium text-sm">Logout</span>
-          </button>
-        </div>
-      )}
-
-      {/* Desktop Sidebar */}
-      <div className="hidden md:flex md:w-64 md:h-dvh md:flex-col md:border-r md:border-slate-200 md:bg-white">
-        <div className="p-6 border-b border-slate-200">
-          <h1 className="font-bold text-lg text-slate-900">RJ BoardHouse</h1>
-          <p className="text-caption text-slate-500 mt-1">{userName}</p>
-        </div>
-
-        <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
-          {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
-            const isActive = pathname.startsWith(href);
-            return (
+        {menuOpen && (
+          <div className="border-t border-slate-100 bg-white pb-3 px-2">
+            {NAV_ITEMS.map(({ href, label, icon: Icon }) => (
               <Link
                 key={href}
                 href={href}
-                className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
-                  isActive ? "bg-blue-50 text-blue-600" : "text-slate-600 hover:bg-slate-50"
-                }`}
+                onClick={() => setMenuOpen(false)}
+                className={`nav-item ${isActive(href) ? "active" : ""}`}
               >
-                <Icon className="w-5 h-5" />
-                <span className="font-medium">{label}</span>
+                <Icon className="nav-icon" />
+                {label}
               </Link>
-            );
-          })}
-        </nav>
+            ))}
+            <div className="divider my-2" />
+            <button onClick={handleLogout} className="nav-item nav-item-danger w-full">
+              <LogOut className="nav-icon" />
+              Sign out
+            </button>
+          </div>
+        )}
+      </header>
 
-        <div className="p-4 border-t border-slate-200">
-          <button
-            onClick={handleLogout}
-            className="flex items-center gap-3 px-4 py-3 text-red-600 hover:bg-red-50 w-full rounded-lg"
-          >
-            <LogOut className="w-5 h-5" />
-            <span className="font-medium">Logout</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Main Content */}
-      <div className="flex-1 w-full overflow-hidden md:overflow-auto">
-        <div className="md:hidden">
+      {/* ── Page content ── */}
+      <main className="flex-1 min-w-0 overflow-auto">
+        <div className="max-w-3xl mx-auto px-5 py-7 md:px-8 md:py-8">
           {children}
         </div>
-        <div className="hidden md:block md:max-w-5xl md:mx-auto">
-          {children}
-        </div>
-      </div>
+      </main>
     </div>
   );
 }

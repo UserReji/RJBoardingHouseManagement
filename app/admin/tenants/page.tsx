@@ -2,170 +2,145 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ChevronRight, Check, X } from "lucide-react";
+import { createSupabaseClient } from "@/lib/supabase";
+import { ChevronRight, Users } from "lucide-react";
+
+type RegistrationStatus = "all" | "pending" | "approved" | "rejected";
 
 interface Tenant {
   id: string;
-  fullName: string;
+  full_name: string;
   email: string;
-  status: "pending" | "approved" | "rejected";
-  roomNumber?: number;
-  registeredDate: string;
+  registration_status: "pending" | "approved" | "rejected";
+  room_number?: number;
+  created_at: string;
 }
 
+const STATUS_BADGE: Record<string, string> = {
+  approved: "badge-success",
+  pending:  "badge-warning",
+  rejected: "badge-danger",
+};
+
+const FILTERS: { value: RegistrationStatus; label: string }[] = [
+  { value: "all",      label: "All" },
+  { value: "approved", label: "Approved" },
+  { value: "pending",  label: "Pending" },
+  { value: "rejected", label: "Rejected" },
+];
+
 export default function AdminTenantsPage() {
-  const [tenants, setTenants] = useState<Tenant[]>([]);
-  const [filterStatus, setFilterStatus] = useState<"all" | "pending" | "approved" | "rejected">("all");
-  const [isLoading, setIsLoading] = useState(true);
+  const supabase = createSupabaseClient();
+  const [tenants,    setTenants]    = useState<Tenant[]>([]);
+  const [filter,     setFilter]     = useState<RegistrationStatus>("all");
+  const [isLoading,  setIsLoading]  = useState(true);
 
   useEffect(() => {
-    // Fetch tenants
-    // Mock data for now
-    setTenants([
-      {
-        id: "tenant-1",
-        fullName: "John Doe",
-        email: "john@example.com",
-        status: "approved",
-        roomNumber: 1,
-        registeredDate: "2025-02-01",
-      },
-      {
-        id: "tenant-2",
-        fullName: "Jane Smith",
-        email: "jane@example.com",
-        status: "approved",
-        roomNumber: 3,
-        registeredDate: "2025-03-15",
-      },
-      {
-        id: "tenant-3",
-        fullName: "Mike Johnson",
-        email: "mike@example.com",
-        status: "pending",
-        registeredDate: "2025-07-14",
-      },
-      {
-        id: "tenant-4",
-        fullName: "Sarah Williams",
-        email: "sarah@example.com",
-        status: "approved",
-        roomNumber: 6,
-        registeredDate: "2025-04-10",
-      },
-      {
-        id: "tenant-5",
-        fullName: "Tom Brown",
-        email: "tom@example.com",
-        status: "pending",
-        registeredDate: "2025-07-16",
-      },
-    ]);
-    setIsLoading(false);
+    const fetchTenants = async () => {
+      const { data, error } = await supabase
+        .from("users")
+        .select("id, full_name, email, registration_status, created_at, rooms(room_number)")
+        .eq("role", "tenant")
+        .order("created_at", { ascending: false });
+
+      if (!error && data) {
+        setTenants(
+          data.map((t: any) => ({
+            id: t.id,
+            full_name: t.full_name,
+            email: t.email,
+            registration_status: t.registration_status,
+            room_number: t.rooms?.room_number ?? undefined,
+            created_at: t.created_at,
+          }))
+        );
+      }
+      setIsLoading(false);
+    };
+    fetchTenants();
   }, []);
 
-  const filteredTenants = tenants.filter(
-    (t) => filterStatus === "all" || t.status === filterStatus
+  if (isLoading) return (
+    <div className="flex items-center justify-center min-h-[60vh]">
+      <div className="text-center">
+        <div className="spinner mx-auto mb-3" />
+        <p className="text-sm text-slate-500">Loading tenants…</p>
+      </div>
+    </div>
   );
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "approved":
-        return "badge-success";
-      case "pending":
-        return "badge-warning";
-      case "rejected":
-        return "badge-danger";
-      default:
-        return "badge-slate";
-    }
-  };
-
-  const getStatusLabel = (status: string) => {
-    return status.charAt(0).toUpperCase() + status.slice(1);
-  };
-
-  if (isLoading) {
-    return (
-      <div className="page md:p-6">
-        <div className="page-content md:max-w-full md:p-0 flex items-center justify-center">
-          <div className="text-center">
-            <div className="w-12 h-12 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-4" />
-            <p className="text-slate-600">Loading tenants...</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  const pendingCount = tenants.filter((t) => t.status === "pending").length;
-  const approvedCount = tenants.filter((t) => t.status === "approved").length;
+  const filtered  = filter === "all" ? tenants : tenants.filter((t) => t.registration_status === filter);
+  const approved  = tenants.filter((t) => t.registration_status === "approved").length;
+  const pending   = tenants.filter((t) => t.registration_status === "pending").length;
 
   return (
-    <div className="page md:p-6">
-      <div className="page-content md:max-w-full md:p-0">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-display-md mb-2">Tenants</h1>
-          <p className="text-slate-600">
-            {approvedCount} approved • {pendingCount} pending
-          </p>
-        </div>
+    <div className="space-y-6">
+      {/* Header */}
+      <div>
+        <p className="text-xs font-bold uppercase tracking-widest text-blue-600 mb-1">People</p>
+        <h1 className="text-display-md">Tenants</h1>
+        <p className="text-slate-500 text-sm mt-1">{approved} approved · {pending} pending</p>
+      </div>
 
-        {/* Filters */}
-        <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
-          {[
-            { value: "all", label: "All" },
-            { value: "approved", label: "Approved" },
-            { value: "pending", label: "Pending" },
-          ].map((filter) => (
-            <button
-              key={filter.value}
-              onClick={() => setFilterStatus(filter.value as any)}
-              className={`btn btn-sm px-4 whitespace-nowrap ${
-                filterStatus === filter.value ? "btn-primary" : "btn-secondary"
-              }`}
+      {/* Filters */}
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        {FILTERS.map((f) => (
+          <button
+            key={f.value}
+            onClick={() => setFilter(f.value)}
+            className={`btn btn-sm whitespace-nowrap ${filter === f.value ? "btn-primary" : "btn-secondary"}`}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+
+      {/* List */}
+      {filtered.length === 0 ? (
+        <div className="card p-12 text-center">
+          <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto mb-4">
+            <Users className="w-6 h-6 text-slate-400" />
+          </div>
+          <p className="font-semibold text-slate-700">No tenants found</p>
+          <p className="text-sm text-slate-400 mt-1">Try a different filter or wait for new registrations.</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {filtered.map((t) => (
+            <Link
+              key={t.id}
+              href={`/admin/tenants/${t.id}`}
+              className="card p-4 hover:shadow-md transition-all flex items-center gap-4 group"
             >
-              {filter.label}
-            </button>
+              {/* Avatar */}
+              <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0 font-bold text-blue-700 text-sm uppercase">
+                {t.full_name?.charAt(0) ?? "?"}
+              </div>
+
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-0.5">
+                  <p className="font-semibold text-slate-900 truncate">{t.full_name}</p>
+                  <span className={`badge ${STATUS_BADGE[t.registration_status]}`}>
+                    {t.registration_status}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 truncate">{t.email}</p>
+              </div>
+
+              <div className="text-right flex-shrink-0">
+                {t.room_number && (
+                  <span className="badge badge-info mb-1">Room {t.room_number}</span>
+                )}
+                <p className="text-xs text-slate-400">
+                  {new Date(t.created_at).toLocaleDateString()}
+                </p>
+              </div>
+
+              <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-slate-700 flex-shrink-0" />
+            </Link>
           ))}
         </div>
-
-        {/* Tenants List */}
-        <div className="space-y-3">
-          {filteredTenants.length === 0 ? (
-            <div className="card p-8 text-center">
-              <p className="text-slate-600">No tenants found.</p>
-            </div>
-          ) : (
-            filteredTenants.map((tenant) => (
-              <Link
-                key={tenant.id}
-                href={`/admin/tenants/${tenant.id}`}
-                className="card p-4 border border-slate-200 hover:shadow-md transition-shadow"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-bold text-slate-900 truncate">{tenant.fullName}</h3>
-                    <p className="text-sm text-slate-500 truncate">{tenant.email}</p>
-                    <div className="flex items-center gap-2 mt-2">
-                      <span className={`badge ${getStatusColor(tenant.status)}`}>
-                        {getStatusLabel(tenant.status)}
-                      </span>
-                      {tenant.roomNumber && (
-                        <span className="text-caption bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
-                          Room {tenant.roomNumber}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <ChevronRight className="w-5 h-5 text-slate-400 flex-shrink-0" />
-                </div>
-              </Link>
-            ))
-          )}
-        </div>
-      </div>
+      )}
     </div>
   );
 }

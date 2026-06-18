@@ -2,181 +2,155 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ChevronRight } from "lucide-react";
+import { createSupabaseClient } from "@/lib/supabase";
+import { ChevronRight, AlertCircle } from "lucide-react";
+
+type StatusFilter = "all" | "open" | "in_progress" | "resolved";
 
 interface Concern {
   id: string;
-  tenantName: string;
+  tenant_name: string;
   title: string;
   status: "open" | "in_progress" | "resolved";
-  createdAt: string;
-  replyCount: number;
+  created_at: string;
+  reply_count: number;
 }
 
+const STATUS_BADGE: Record<string, string> = {
+  open:        "badge-danger",
+  in_progress: "badge-warning",
+  resolved:    "badge-success",
+};
+
+const STATUS_LABEL: Record<string, string> = {
+  open:        "Open",
+  in_progress: "In Progress",
+  resolved:    "Resolved",
+};
+
+const FILTERS: { value: StatusFilter; label: string }[] = [
+  { value: "open",        label: "Open" },
+  { value: "in_progress", label: "In Progress" },
+  { value: "resolved",    label: "Resolved" },
+  { value: "all",         label: "All" },
+];
+
 export default function AdminConcernsPage() {
-  const [concerns, setConcerns] = useState<Concern[]>([]);
-  const [filterStatus, setFilterStatus] = useState<"all" | "open" | "in_progress" | "resolved">("all");
+  const supabase = createSupabaseClient();
+  const [concerns,  setConcerns]  = useState<Concern[]>([]);
+  const [filter,    setFilter]    = useState<StatusFilter>("open");
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Fetch concerns
-    // Mock data for now
-    setConcerns([
-      {
-        id: "concern-1",
-        tenantName: "Jane Smith",
-        title: "Leaky faucet in bathroom",
-        status: "in_progress",
-        createdAt: "2025-07-10",
-        replyCount: 2,
-      },
-      {
-        id: "concern-2",
-        tenantName: "Mike Johnson",
-        title: "Air conditioning not working",
-        status: "resolved",
-        createdAt: "2025-07-05",
-        replyCount: 3,
-      },
-      {
-        id: "concern-3",
-        tenantName: "John Doe",
-        title: "Noisy neighbors",
-        status: "open",
-        createdAt: "2025-07-15",
-        replyCount: 0,
-      },
-      {
-        id: "concern-4",
-        tenantName: "Sarah Williams",
-        title: "Light bulb replacement needed",
-        status: "resolved",
-        createdAt: "2025-07-08",
-        replyCount: 1,
-      },
-      {
-        id: "concern-5",
-        tenantName: "Tom Brown",
-        title: "Water pressure issue in Room 8",
-        status: "open",
-        createdAt: "2025-07-16",
-        replyCount: 0,
-      },
-    ]);
-    setIsLoading(false);
+    const fetchConcerns = async () => {
+      const { data, error } = await supabase
+        .from("concerns")
+        .select(`
+          id, title, status, created_at,
+          users ( full_name ),
+          concern_replies ( id )
+        `)
+        .order("created_at", { ascending: false });
+
+      if (!error && data) {
+        setConcerns(
+          data.map((c: any) => ({
+            id:          c.id,
+            tenant_name: c.users?.full_name ?? "—",
+            title:       c.title,
+            status:      c.status,
+            created_at:  c.created_at,
+            reply_count: c.concern_replies?.length ?? 0,
+          }))
+        );
+      }
+      setIsLoading(false);
+    };
+    fetchConcerns();
   }, []);
 
-  const filteredConcerns = concerns.filter(
-    (c) => filterStatus === "all" || c.status === filterStatus
+  if (isLoading) return (
+    <div className="flex items-center justify-center min-h-[60vh]">
+      <div className="text-center">
+        <div className="spinner mx-auto mb-3" />
+        <p className="text-sm text-slate-500">Loading concerns…</p>
+      </div>
+    </div>
   );
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "open":
-        return "badge-info";
-      case "in_progress":
-        return "badge-warning";
-      case "resolved":
-        return "badge-success";
-      default:
-        return "badge-slate";
-    }
-  };
-
-  const getStatusLabel = (status: string) => {
-    switch (status) {
-      case "open":
-        return "Open";
-      case "in_progress":
-        return "In Progress";
-      case "resolved":
-        return "Resolved";
-      default:
-        return status;
-    }
-  };
-
-  if (isLoading) {
-    return (
-      <div className="page md:p-6">
-        <div className="page-content md:max-w-full md:p-0 flex items-center justify-center">
-          <div className="text-center">
-            <div className="w-12 h-12 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-4" />
-            <p className="text-slate-600">Loading concerns...</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  const openCount = concerns.filter((c) => c.status === "open").length;
-  const inProgressCount = concerns.filter((c) => c.status === "in_progress").length;
+  const filtered    = filter === "all" ? concerns : concerns.filter((c) => c.status === filter);
+  const openCount   = concerns.filter((c) => c.status === "open").length;
+  const inProgCount = concerns.filter((c) => c.status === "in_progress").length;
 
   return (
-    <div className="page md:p-6">
-      <div className="page-content md:max-w-full md:p-0">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-display-md mb-2">Concerns</h1>
-          <p className="text-slate-600">
-            {openCount} open • {inProgressCount} in progress
+    <div className="space-y-6">
+      {/* Header */}
+      <div>
+        <p className="text-xs font-bold uppercase tracking-widest text-blue-600 mb-1">Support</p>
+        <h1 className="text-display-md">Concerns</h1>
+        <p className="text-slate-500 text-sm mt-1">{openCount} open · {inProgCount} in progress</p>
+      </div>
+
+      {/* Filters */}
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        {FILTERS.map((f) => (
+          <button
+            key={f.value}
+            onClick={() => setFilter(f.value)}
+            className={`btn btn-sm whitespace-nowrap ${filter === f.value ? "btn-primary" : "btn-secondary"}`}
+          >
+            {f.label}
+            {f.value === "open" && openCount > 0 && (
+              <span className="ml-1.5 bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5 font-bold">
+                {openCount}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* List */}
+      {filtered.length === 0 ? (
+        <div className="card p-12 text-center">
+          <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto mb-4">
+            <AlertCircle className="w-6 h-6 text-slate-400" />
+          </div>
+          <p className="font-semibold text-slate-700">No concerns found</p>
+          <p className="text-sm text-slate-400 mt-1">
+            {filter === "open" ? "No open concerns right now." : "Try a different filter."}
           </p>
         </div>
-
-        {/* Filters */}
-        <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
-          {[
-            { value: "open", label: "Open" },
-            { value: "in_progress", label: "In Progress" },
-            { value: "resolved", label: "Resolved" },
-            { value: "all", label: "All" },
-          ].map((filter) => (
-            <button
-              key={filter.value}
-              onClick={() => setFilterStatus(filter.value as any)}
-              className={`btn btn-sm px-4 whitespace-nowrap ${
-                filterStatus === filter.value ? "btn-primary" : "btn-secondary"
-              }`}
+      ) : (
+        <div className="space-y-2">
+          {filtered.map((concern) => (
+            <Link
+              key={concern.id}
+              href={`/admin/concerns/${concern.id}`}
+              className="card p-4 hover:shadow-md transition-all flex items-start gap-4 group"
             >
-              {filter.label}
-            </button>
+              <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                <AlertCircle className={`w-5 h-5 ${concern.status === "open" ? "text-red-500" : concern.status === "in_progress" ? "text-amber-500" : "text-emerald-500"}`} />
+              </div>
+
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                  <p className="font-semibold text-slate-900 truncate">{concern.title}</p>
+                  <span className={`badge ${STATUS_BADGE[concern.status]}`}>
+                    {STATUS_LABEL[concern.status]}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500">
+                  {concern.tenant_name} ·{" "}
+                  {new Date(concern.created_at).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" })} ·{" "}
+                  {concern.reply_count} {concern.reply_count === 1 ? "reply" : "replies"}
+                </p>
+              </div>
+
+              <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-slate-700 flex-shrink-0 mt-1" />
+            </Link>
           ))}
         </div>
-
-        {/* Concerns List */}
-        <div className="space-y-3">
-          {filteredConcerns.length === 0 ? (
-            <div className="card p-8 text-center">
-              <p className="text-slate-600">No concerns found.</p>
-            </div>
-          ) : (
-            filteredConcerns.map((concern) => (
-              <Link
-                key={concern.id}
-                href={`/admin/concerns/${concern.id}`}
-                className="card p-4 border border-slate-200 hover:shadow-md transition-shadow"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <p className="text-caption text-slate-600 font-medium">{concern.tenantName}</p>
-                      <span className={`badge ${getStatusColor(concern.status)}`}>
-                        {getStatusLabel(concern.status)}
-                      </span>
-                    </div>
-                    <h3 className="font-bold text-slate-900 truncate mb-1">{concern.title}</h3>
-                    <p className="text-sm text-slate-500">
-                      {new Date(concern.createdAt).toLocaleDateString()} • {concern.replyCount} reply
-                      {concern.replyCount !== 1 ? "ies" : ""}
-                    </p>
-                  </div>
-                  <ChevronRight className="w-5 h-5 text-slate-400 flex-shrink-0" />
-                </div>
-              </Link>
-            ))
-          )}
-        </div>
-      </div>
+      )}
     </div>
   );
 }

@@ -1,158 +1,196 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { createSupabaseClient } from "@/lib/supabase";
+import { Settings as SettingsIcon, Upload, Save, Zap, Users2, QrCode } from "lucide-react";
 import toast from "react-hot-toast";
-import { Settings as SettingsIcon, Upload } from "lucide-react";
+
+interface AppSettings {
+  kwh_rate: number;
+  extra_occupant_rate: number;
+  gcash_qr_url?: string;
+}
 
 export default function AdminSettingsPage() {
-  const [kwhRate, setKwhRate] = useState(2);
-  const [extraOccupantRate, setExtraOccupantRate] = useState(25);
-  const [gcashQr, setGcashQr] = useState<File | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
+  const supabase   = createSupabaseClient();
+  const [settings, setSettings]  = useState<AppSettings>({ kwh_rate: 2, extra_occupant_rate: 25 });
+  const [qrFile,   setQrFile]    = useState<File | null>(null);
+  const [qrPreview,setQrPreview] = useState<string | null>(null);
+  const [isSaving, setIsSaving]  = useState(false);
+  const [isLoading,setIsLoading] = useState(true);
 
-  const handleSaveSettings = async (e: React.FormEvent) => {
+  useEffect(() => {
+    const fetchSettings = async () => {
+      const { data } = await supabase.from("settings").select("*").single();
+      if (data) {
+        setSettings({
+          kwh_rate:            data.kwh_rate ?? 2,
+          extra_occupant_rate: data.extra_occupant_rate ?? 25,
+          gcash_qr_url:        data.gcash_qr_url ?? undefined,
+        });
+        if (data.gcash_qr_url) setQrPreview(data.gcash_qr_url);
+      }
+      setIsLoading(false);
+    };
+    fetchSettings();
+  }, []);
+
+  const handleQrChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setQrFile(file);
+    setQrPreview(URL.createObjectURL(file));
+  };
+
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
-
     try {
-      // TODO: Upload GCash QR to Supabase Storage and save settings
-      toast.success("Settings saved successfully");
-    } catch (error) {
-      console.error("Error saving settings:", error);
+      let gcash_qr_url = settings.gcash_qr_url;
+
+      // Upload QR if new file selected
+      if (qrFile) {
+        const ext  = qrFile.name.split(".").pop();
+        const path = `gcash-qr/qr.${ext}`;
+        const { error: uploadError } = await supabase.storage
+          .from("public-assets")
+          .upload(path, qrFile, { upsert: true });
+        if (uploadError) throw uploadError;
+        const { data: urlData } = supabase.storage.from("public-assets").getPublicUrl(path);
+        gcash_qr_url = urlData.publicUrl;
+      }
+
+      const { error } = await supabase
+        .from("settings")
+        .upsert({ id: 1, ...settings, gcash_qr_url }, { onConflict: "id" });
+
+      if (error) throw error;
+      setSettings((s) => ({ ...s, gcash_qr_url }));
+      toast.success("Settings saved");
+    } catch (err) {
+      console.error(err);
       toast.error("Failed to save settings");
     } finally {
       setIsSaving(false);
     }
   };
 
-  return (
-    <div className="page md:p-6">
-      <div className="page-content md:max-w-full md:p-0">
-        {/* Header */}
-        <div className="flex items-center gap-2 mb-8">
-          <SettingsIcon className="w-6 h-6 text-blue-600" />
-          <h1 className="text-display-md">Settings</h1>
-        </div>
-
-        <form onSubmit={handleSaveSettings} className="space-y-8">
-          {/* Default Rates Section */}
-          <div className="card p-6 border border-slate-200">
-            <h2 className="text-title-md mb-5">Default Rates</h2>
-
-            <div className="space-y-5">
-              {/* kWh Rate */}
-              <div>
-                <label htmlFor="kwhRate" className="label">
-                  Default kWh Rate (₱/kWh)
-                </label>
-                <input
-                  type="number"
-                  id="kwhRate"
-                  min="0"
-                  step="0.1"
-                  value={kwhRate}
-                  onChange={(e) => setKwhRate(parseFloat(e.target.value))}
-                  className="input"
-                />
-                <p className="text-caption text-slate-500 mt-2">
-                  Applied to all new bills unless manually overridden
-                </p>
-              </div>
-
-              {/* Extra Occupant Rate */}
-              <div>
-                <label htmlFor="extraOccupantRate" className="label">
-                  Extra Occupant Rate (₱/day)
-                </label>
-                <div className="flex gap-2">
-                  {[20, 25, 30].map((rate) => (
-                    <button
-                      key={rate}
-                      type="button"
-                      onClick={() => setExtraOccupantRate(rate)}
-                      className={`btn btn-sm flex-1 ${
-                        extraOccupantRate === rate ? "btn-primary" : "btn-secondary"
-                      }`}
-                    >
-                      ₱{rate}
-                    </button>
-                  ))}
-                </div>
-                <p className="text-caption text-slate-500 mt-2">
-                  Default rate for additional occupants
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* GCash QR Code Section */}
-          <div className="card p-6 border border-slate-200">
-            <h2 className="text-title-md mb-5">GCash QR Code</h2>
-
-            <div className="space-y-4">
-              <div>
-                <label className="label">Upload GCash QR Image</label>
-                <p className="text-caption text-slate-600 mb-3">
-                  This QR will be displayed on the landing page and bill payment screens
-                </p>
-
-                <label className="card p-8 border-2 border-dashed border-blue-300 cursor-pointer hover:bg-blue-50 transition-colors flex items-center justify-center">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => setGcashQr(e.target.files?.[0] || null)}
-                    className="sr-only"
-                  />
-                  <div className="text-center">
-                    <Upload className="w-8 h-8 text-blue-600 mx-auto mb-2" />
-                    <p className="font-medium text-slate-900">Upload QR Code</p>
-                    <p className="text-sm text-slate-500">Tap to select an image</p>
-                  </div>
-                </label>
-
-                {gcashQr && (
-                  <p className="text-sm text-green-600 mt-2">✓ {gcashQr.name}</p>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Default Room Prices Section */}
-          <div className="card p-6 border border-slate-200">
-            <h2 className="text-title-md mb-5">Default Room Prices</h2>
-
-            <div className="space-y-3">
-              <div className="p-4 bg-slate-50 rounded-lg">
-                <p className="text-caption text-slate-600">Room 1</p>
-                <p className="text-xl font-bold text-slate-900">₱3,500 / month</p>
-              </div>
-              <div className="p-4 bg-slate-50 rounded-lg">
-                <p className="text-caption text-slate-600">Rooms 2–8</p>
-                <p className="text-xl font-bold text-slate-900">₱2,500 / month</p>
-              </div>
-            </div>
-
-            <p className="text-caption text-slate-500 mt-4">
-              To change room prices, edit individual rooms in the Rooms section
-            </p>
-          </div>
-
-          {/* Save Button */}
-          <div className="flex gap-3 pt-6">
-            <button type="submit" disabled={isSaving} className="btn btn-primary btn-lg w-full">
-              {isSaving ? "Saving..." : "Save Settings"}
-            </button>
-          </div>
-        </form>
-
-        {/* Info Box */}
-        <div className="card p-4 bg-blue-50 border-blue-200 mt-8 mb-8">
-          <p className="text-sm text-blue-800">
-            <span className="font-semibold">Tip:</span> Settings are applied globally unless overridden at the
-            bill level.
-          </p>
-        </div>
+  if (isLoading) return (
+    <div className="flex items-center justify-center min-h-[60vh]">
+      <div className="text-center">
+        <div className="spinner mx-auto mb-3" />
+        <p className="text-sm text-slate-500">Loading settings…</p>
       </div>
+    </div>
+  );
+
+  return (
+    <div className="space-y-6 max-w-2xl">
+      {/* Header */}
+      <div>
+        <p className="text-xs font-bold uppercase tracking-widest text-blue-600 mb-1">Configuration</p>
+        <h1 className="text-display-md">Settings</h1>
+        <p className="text-slate-500 text-sm mt-1">Manage rates and payment configuration.</p>
+      </div>
+
+      <form onSubmit={handleSave} className="space-y-5">
+        {/* Billing Rates */}
+        <div className="card p-6">
+          <div className="flex items-center gap-2.5 mb-5">
+            <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center">
+              <Zap className="w-4 h-4 text-amber-500" />
+            </div>
+            <h2 className="font-bold text-slate-800">Billing Rates</h2>
+          </div>
+
+          <div className="space-y-5">
+            <div>
+              <label className="label">Electricity Rate (₱ per kWh)</label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={settings.kwh_rate}
+                onChange={(e) => setSettings((s) => ({ ...s, kwh_rate: parseFloat(e.target.value) || 0 }))}
+                className="input"
+              />
+              <p className="text-caption text-slate-400 mt-1.5">Applied to all new bills unless overridden per bill.</p>
+            </div>
+
+            <div>
+              <label className="label">Extra Occupant Rate (₱ per day)</label>
+              <div className="flex gap-2 mb-2">
+                {[20, 25, 30].map((rate) => (
+                  <button
+                    key={rate}
+                    type="button"
+                    onClick={() => setSettings((s) => ({ ...s, extra_occupant_rate: rate }))}
+                    className={`btn btn-sm flex-1 ${settings.extra_occupant_rate === rate ? "btn-primary" : "btn-secondary"}`}
+                  >
+                    ₱{rate}
+                  </button>
+                ))}
+              </div>
+              <input
+                type="number"
+                min="0"
+                value={settings.extra_occupant_rate}
+                onChange={(e) => setSettings((s) => ({ ...s, extra_occupant_rate: parseInt(e.target.value) || 0 }))}
+                className="input"
+              />
+              <p className="text-caption text-slate-400 mt-1.5">Daily charge for additional occupants beyond the default.</p>
+            </div>
+          </div>
+        </div>
+
+        {/* GCash QR */}
+        <div className="card p-6">
+          <div className="flex items-center gap-2.5 mb-5">
+            <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
+              <QrCode className="w-4 h-4 text-blue-600" />
+            </div>
+            <h2 className="font-bold text-slate-800">GCash QR Code</h2>
+          </div>
+
+          <p className="text-sm text-slate-500 mb-4">
+            Shown to tenants on the payment screen. Keep it up to date.
+          </p>
+
+          {qrPreview ? (
+            <div className="mb-4">
+              <img
+                src={qrPreview}
+                alt="GCash QR"
+                className="w-40 h-40 object-contain rounded-xl border border-slate-200 p-2 bg-white"
+              />
+            </div>
+          ) : null}
+
+          <label className="card p-6 border-2 border-dashed border-slate-200 hover:border-blue-400 hover:bg-blue-50 transition-colors cursor-pointer flex flex-col items-center gap-2">
+            <input type="file" accept="image/*" onChange={handleQrChange} className="sr-only" />
+            <Upload className="w-6 h-6 text-slate-400" />
+            <p className="font-medium text-sm text-slate-700">
+              {qrFile ? qrFile.name : "Click to upload QR image"}
+            </p>
+            <p className="text-xs text-slate-400">PNG, JPG up to 5MB</p>
+          </label>
+        </div>
+
+        {/* Save */}
+        <button type="submit" disabled={isSaving} className="btn btn-primary btn-lg">
+          {isSaving ? (
+            <span className="flex items-center gap-2">
+              <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+              Saving…
+            </span>
+          ) : (
+            <span className="flex items-center gap-2">
+              <Save className="w-4 h-4" />
+              Save Settings
+            </span>
+          )}
+        </button>
+      </form>
     </div>
   );
 }

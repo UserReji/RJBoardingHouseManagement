@@ -2,130 +2,112 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ChevronRight } from "lucide-react";
+import { createSupabaseClient } from "@/lib/supabase";
+import { ChevronRight, FileText } from "lucide-react";
 
 interface Bill {
   id: string;
-  billingPeriodStart: string;
-  billingPeriodEnd: string;
-  totalAmount: number;
+  billing_period_start: string;
+  billing_period_end: string;
+  total_amount: number;
   status: "paid" | "unpaid" | "partially_paid";
 }
 
+const STATUS_BADGE: Record<string, string> = {
+  paid:           "badge-success",
+  unpaid:         "badge-danger",
+  partially_paid: "badge-warning",
+};
+
+const STATUS_LABEL: Record<string, string> = {
+  paid:           "Paid",
+  unpaid:         "Unpaid",
+  partially_paid: "Partial",
+};
+
 export default function TenantBillsPage() {
-  const [bills, setBills] = useState<Bill[]>([]);
+  const supabase = createSupabaseClient();
+  const [bills,     setBills]     = useState<Bill[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Fetch tenant bills
-    // Mock data for now
-    setBills([
-      {
-        id: "bill-1",
-        billingPeriodStart: "2025-06-01",
-        billingPeriodEnd: "2025-06-30",
-        totalAmount: 2800,
-        status: "paid",
-      },
-      {
-        id: "bill-2",
-        billingPeriodStart: "2025-05-01",
-        billingPeriodEnd: "2025-05-31",
-        totalAmount: 2750,
-        status: "paid",
-      },
-      {
-        id: "bill-3",
-        billingPeriodStart: "2025-07-01",
-        billingPeriodEnd: "2025-07-31",
-        totalAmount: 2900,
-        status: "unpaid",
-      },
-    ]);
-    setIsLoading(false);
+    const fetchBills = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const { data, error } = await supabase
+        .from("tenant_bills")
+        .select("id, billing_period_start, billing_period_end, total_amount, status")
+        .eq("user_id", session.user.id)
+        .order("billing_period_start", { ascending: false });
+
+      if (!error && data) setBills(data as Bill[]);
+      setIsLoading(false);
+    };
+    fetchBills();
   }, []);
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "paid":
-        return "badge-success";
-      case "unpaid":
-        return "badge-danger";
-      case "partially_paid":
-        return "badge-warning";
-      default:
-        return "badge-slate";
-    }
-  };
-
-  const getStatusLabel = (status: string) => {
-    switch (status) {
-      case "paid":
-        return "Paid";
-      case "unpaid":
-        return "Unpaid";
-      case "partially_paid":
-        return "Partially Paid";
-      default:
-        return status;
-    }
-  };
-
-  if (isLoading) {
-    return (
-      <div className="page">
-        <div className="page-content flex items-center justify-center">
-          <div className="text-center">
-            <div className="w-12 h-12 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-4" />
-            <p className="text-slate-600">Loading bills...</p>
-          </div>
-        </div>
+  if (isLoading) return (
+    <div className="flex items-center justify-center min-h-[60vh]">
+      <div className="text-center">
+        <div className="spinner mx-auto mb-3" />
+        <p className="text-sm text-slate-500">Loading bills…</p>
       </div>
-    );
-  }
+    </div>
+  );
+
+  const unpaid = bills.filter((b) => b.status === "unpaid").length;
 
   return (
-    <div className="page md:p-6">
-      <div className="page-content md:max-w-full md:p-0">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-display-md mb-2">Your Bills</h1>
-          <p className="text-slate-600">View and manage your monthly bills.</p>
-        </div>
-
-        {/* Bills List */}
-        <div className="space-y-3">
-          {bills.length === 0 ? (
-            <div className="card p-8 text-center">
-              <p className="text-slate-600">No bills yet.</p>
-            </div>
-          ) : (
-            bills.map((bill) => (
-              <Link
-                key={bill.id}
-                href={`/tenant/bills/${bill.id}`}
-                className="card p-4 border border-slate-200 hover:shadow-md transition-shadow"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <p className="text-sm text-slate-600 mb-1">
-                      {new Date(bill.billingPeriodStart).toLocaleDateString()} -{" "}
-                      {new Date(bill.billingPeriodEnd).toLocaleDateString()}
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <p className="font-bold text-slate-900">₱{bill.totalAmount.toLocaleString()}</p>
-                      <span className={`badge ${getStatusColor(bill.status)}`}>
-                        {getStatusLabel(bill.status)}
-                      </span>
-                    </div>
-                  </div>
-                  <ChevronRight className="w-5 h-5 text-slate-400" />
-                </div>
-              </Link>
-            ))
-          )}
-        </div>
+    <div className="space-y-6">
+      {/* Header */}
+      <div>
+        <p className="text-xs font-bold uppercase tracking-widest text-blue-600 mb-1">Finance</p>
+        <h1 className="text-display-md">Your Bills</h1>
+        <p className="text-slate-500 text-sm mt-1">
+          {unpaid > 0 ? `${unpaid} unpaid bill${unpaid > 1 ? "s" : ""}` : "All bills settled ✓"}
+        </p>
       </div>
+
+      {bills.length === 0 ? (
+        <div className="card p-12 text-center">
+          <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto mb-4">
+            <FileText className="w-6 h-6 text-slate-400" />
+          </div>
+          <p className="font-semibold text-slate-700">No bills yet</p>
+          <p className="text-sm text-slate-400 mt-1">Your bills will appear here once issued by the admin.</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {bills.map((bill) => (
+            <Link
+              key={bill.id}
+              href={`/tenant/bills/${bill.id}`}
+              className="card p-4 hover:shadow-md transition-all flex items-center gap-4 group"
+            >
+              <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center flex-shrink-0">
+                <FileText className="w-5 h-5 text-blue-600" />
+              </div>
+
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-slate-400 mb-0.5">
+                  {new Date(bill.billing_period_start).toLocaleDateString("en-PH", { month: "short", day: "numeric" })}
+                  {" – "}
+                  {new Date(bill.billing_period_end).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" })}
+                </p>
+                <div className="flex items-center gap-2">
+                  <p className="font-bold text-slate-900">₱{bill.total_amount.toLocaleString()}</p>
+                  <span className={`badge ${STATUS_BADGE[bill.status]}`}>
+                    {STATUS_LABEL[bill.status]}
+                  </span>
+                </div>
+              </div>
+
+              <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-slate-700 flex-shrink-0" />
+            </Link>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

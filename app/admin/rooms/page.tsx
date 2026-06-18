@@ -2,174 +2,126 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ChevronRight, Plus, Edit2 } from "lucide-react";
+import { createSupabaseClient } from "@/lib/supabase";
+import { ChevronRight, DoorOpen } from "lucide-react";
 
 interface Room {
   id: string;
-  roomNumber: number;
-  price: number;
+  room_number: number;
+  monthly_rent: number;
   status: "occupied" | "vacant";
-  currentTenant?: string;
-  photoCount: number;
+  current_tenant?: string;
+}
+
+function EmptyState() {
+  return (
+    <div className="card p-12 text-center">
+      <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto mb-4">
+        <DoorOpen className="w-6 h-6 text-slate-400" />
+      </div>
+      <p className="font-semibold text-slate-700">No rooms found</p>
+      <p className="text-sm text-slate-400 mt-1">Rooms will appear here once added.</p>
+    </div>
+  );
 }
 
 export default function AdminRoomsPage() {
+  const supabase = createSupabaseClient();
   const [rooms, setRooms] = useState<Room[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Fetch rooms
-    // Mock data for now
-    setRooms([
-      {
-        id: "room-1",
-        roomNumber: 1,
-        price: 3500,
-        status: "occupied",
-        currentTenant: "John Doe",
-        photoCount: 3,
-      },
-      {
-        id: "room-2",
-        roomNumber: 2,
-        price: 2500,
-        status: "vacant",
-        photoCount: 2,
-      },
-      {
-        id: "room-3",
-        roomNumber: 3,
-        price: 2500,
-        status: "occupied",
-        currentTenant: "Jane Smith",
-        photoCount: 2,
-      },
-      {
-        id: "room-4",
-        roomNumber: 4,
-        price: 2500,
-        status: "vacant",
-        photoCount: 1,
-      },
-      {
-        id: "room-5",
-        roomNumber: 5,
-        price: 2500,
-        status: "occupied",
-        currentTenant: "Mike Johnson",
-        photoCount: 2,
-      },
-      {
-        id: "room-6",
-        roomNumber: 6,
-        price: 2500,
-        status: "occupied",
-        currentTenant: "Sarah Williams",
-        photoCount: 3,
-      },
-      {
-        id: "room-7",
-        roomNumber: 7,
-        price: 2500,
-        status: "vacant",
-        photoCount: 1,
-      },
-      {
-        id: "room-8",
-        roomNumber: 8,
-        price: 2500,
-        status: "occupied",
-        currentTenant: "Tom Brown",
-        photoCount: 2,
-      },
-    ]);
-    setIsLoading(false);
+    const fetchRooms = async () => {
+      const { data, error } = await supabase
+        .from("rooms")
+        .select(`
+          id, room_number, monthly_rent, status,
+          users ( full_name )
+        `)
+        .order("room_number");
+
+      if (!error && data) {
+        setRooms(
+          data.map((r: any) => ({
+            id: r.id,
+            room_number: r.room_number,
+            monthly_rent: r.monthly_rent,
+            status: r.status,
+            current_tenant: r.users?.full_name ?? undefined,
+          }))
+        );
+      }
+      setIsLoading(false);
+    };
+    fetchRooms();
   }, []);
 
-  if (isLoading) {
-    return (
-      <div className="page md:p-6">
-        <div className="page-content md:max-w-full md:p-0 flex items-center justify-center">
-          <div className="text-center">
-            <div className="w-12 h-12 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-4" />
-            <p className="text-slate-600">Loading rooms...</p>
-          </div>
-        </div>
+  if (isLoading) return (
+    <div className="flex items-center justify-center min-h-[60vh]">
+      <div className="text-center">
+        <div className="spinner mx-auto mb-3" />
+        <p className="text-sm text-slate-500">Loading rooms…</p>
       </div>
-    );
-  }
+    </div>
+  );
 
-  const occupiedCount = rooms.filter((r) => r.status === "occupied").length;
+  const occupied = rooms.filter((r) => r.status === "occupied").length;
+  const vacant   = rooms.length - occupied;
 
   return (
-    <div className="page md:p-6">
-      <div className="page-content md:max-w-full md:p-0">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-display-md mb-2">Rooms</h1>
-            <p className="text-slate-600">
-              {occupiedCount} occupied • {rooms.length - occupiedCount} vacant
-            </p>
-          </div>
-          <div className="hidden md:block text-right">
-            <p className="text-sm text-slate-600">Total: {rooms.length} rooms</p>
-          </div>
-        </div>
+    <div className="space-y-6">
+      {/* Header */}
+      <div>
+        <p className="text-xs font-bold uppercase tracking-widest text-blue-600 mb-1">Properties</p>
+        <h1 className="text-display-md">Rooms</h1>
+        <p className="text-slate-500 text-sm mt-1">{occupied} occupied · {vacant} vacant · {rooms.length} total</p>
+      </div>
 
-        {/* Rooms Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      {rooms.length === 0 ? (
+        <EmptyState />
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {rooms.map((room) => (
             <Link
               key={room.id}
               href={`/admin/rooms/${room.id}`}
-              className={`card p-4 border-2 hover:shadow-md transition-shadow ${
+              className={`card p-5 hover:shadow-md transition-all hover:-translate-y-0.5 ${
                 room.status === "occupied"
-                  ? "border-blue-200 bg-blue-50"
-                  : "border-slate-200 bg-white"
+                  ? "border-blue-200"
+                  : "border-slate-200"
               }`}
             >
               <div className="flex items-start justify-between mb-4">
                 <div>
-                  <p className="text-caption text-slate-600">Room Number</p>
-                  <h3 className="text-2xl font-bold text-slate-900 mt-1">{room.roomNumber}</h3>
+                  <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Room</p>
+                  <p className="text-3xl font-extrabold text-slate-900 tracking-tight mt-0.5">{room.room_number}</p>
                 </div>
-                <span
-                  className={`badge ${room.status === "occupied" ? "badge-success" : "badge-slate"}`}
-                >
+                <span className={`badge ${room.status === "occupied" ? "badge-info" : "badge-slate"}`}>
                   {room.status === "occupied" ? "Occupied" : "Vacant"}
                 </span>
               </div>
 
-              <div className="space-y-3">
+              <div className="space-y-2">
                 <div>
-                  <p className="text-caption text-slate-600">Monthly Rate</p>
-                  <p className="font-bold text-slate-900">₱{room.price.toLocaleString()}</p>
+                  <p className="text-xs text-slate-400 font-medium">Monthly rate</p>
+                  <p className="font-bold text-slate-900">₱{room.monthly_rent?.toLocaleString() ?? "—"}</p>
                 </div>
-
-                {room.currentTenant && (
+                {room.current_tenant && (
                   <div>
-                    <p className="text-caption text-slate-600">Current Tenant</p>
-                    <p className="font-medium text-slate-900 truncate">{room.currentTenant}</p>
+                    <p className="text-xs text-slate-400 font-medium">Current tenant</p>
+                    <p className="font-semibold text-slate-700 text-sm truncate">{room.current_tenant}</p>
                   </div>
                 )}
+              </div>
 
-                <p className="text-caption text-slate-500">{room.photoCount} photos</p>
-
-                <div className="flex gap-2 pt-2">
-                  <button className="btn btn-sm btn-secondary flex-1 flex items-center justify-center gap-1">
-                    <Edit2 className="w-4 h-4" />
-                    Edit
-                  </button>
-                  <button className="btn btn-sm btn-ghost flex-1">
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                </div>
+              <div className="mt-4 pt-4 border-t border-slate-100 flex items-center justify-between">
+                <span className="text-xs text-slate-400">View details</span>
+                <ChevronRight className="w-4 h-4 text-slate-400" />
               </div>
             </Link>
           ))}
         </div>
-      </div>
+      )}
     </div>
   );
 }

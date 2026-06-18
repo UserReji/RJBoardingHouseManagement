@@ -8,11 +8,12 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import toast from "react-hot-toast";
 import { LoginSchema, LoginInput } from "@/lib/validators";
 import { createSupabaseClient, isValidAdminCredentials } from "@/lib/supabase";
-import { Mail, Lock, ChevronLeft } from "lucide-react";
+import { Mail, Lock, Home, Eye, EyeOff } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const supabase = createSupabaseClient();
 
   const {
@@ -31,167 +32,178 @@ export default function LoginPage() {
     setIsLoading(true);
     try {
       if (data.userType === "admin") {
-        // Admin login with hardcoded credentials
         if (isValidAdminCredentials(data.email, data.password)) {
-          // Store admin session in localStorage
           localStorage.setItem("adminSession", JSON.stringify({ email: data.email }));
-          toast.success("Welcome Admin!");
+          toast.success("Welcome back, Admin!");
           router.push("/admin/dashboard");
         } else {
           toast.error("Invalid admin credentials");
         }
       } else {
-        // Tenant login with Supabase Auth
         const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
           email: data.email,
           password: data.password,
         });
+        if (authError) { toast.error(authError.message || "Login failed"); return; }
 
-        if (authError) {
-          toast.error(authError.message || "Login failed");
-          return;
-        }
-
-        // Check tenant registration status
         const { data: userData, error: userError } = await supabase
           .from("users")
           .select("registration_status, role")
           .eq("id", authData.user.id)
           .single();
 
-        if (userError || !userData) {
-          toast.error("User profile not found");
-          return;
-        }
-
+        if (userError || !userData) { toast.error("User profile not found"); return; }
         if (userData.registration_status === "pending") {
           toast.error("Your registration is pending admin approval");
           return;
         }
-
         if (userData.registration_status === "rejected") {
-          toast.error("Your registration was rejected");
+          toast.error("Your registration was rejected. Contact the admin.");
           return;
         }
+        if (userData.role !== "tenant") { toast.error("Invalid user role"); return; }
 
-        if (userData.role !== "tenant") {
-          toast.error("Invalid user role");
-          return;
-        }
-
-        toast.success("Welcome!");
+        toast.success("Welcome back!");
         router.push("/tenant/dashboard");
       }
     } catch (error) {
       console.error("Login error:", error);
-      toast.error("An error occurred during login");
+      toast.error("An error occurred. Please try again.");
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="page">
-      <div className="page-header">
-        <div className="page-nav">
-          <Link href="/" className="btn btn-ghost btn-sm">
-            <ChevronLeft className="w-5 h-5" />
-          </Link>
-          <h1 className="text-title-md">Sign In</h1>
-          <div className="w-10" />
-        </div>
+    <div className="min-h-dvh bg-gradient-to-br from-slate-50 to-slate-100 flex flex-col">
+      {/* Top bar */}
+      <div className="px-5 py-4">
+        <Link href="/" className="inline-flex items-center gap-2 text-slate-500 hover:text-slate-800 transition-colors text-sm font-medium">
+          <Home className="w-4 h-4" />
+          RJ BoardHouse
+        </Link>
       </div>
 
-      <div className="page-content">
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6 mt-6">
-          {/* User Type Toggle */}
-          <div className="flex gap-3 bg-slate-100 p-1 rounded-lg">
-            {[
-              { value: "tenant", label: "Tenant" },
-              { value: "admin", label: "Admin" },
-            ].map((option) => (
-              <label key={option.value} className="flex-1">
-                <input
-                  type="radio"
-                  value={option.value}
-                  {...register("userType")}
-                  className="sr-only"
-                />
-                <div
-                  className={`py-2 px-4 rounded-md font-medium text-center cursor-pointer transition-colors ${
-                    userType === option.value
-                      ? "bg-white text-blue-600 shadow-sm"
-                      : "text-slate-600 bg-transparent"
-                  }`}
-                >
-                  {option.label}
+      {/* Card */}
+      <div className="flex-1 flex items-center justify-center px-5 py-8">
+        <div className="w-full max-w-sm">
+          {/* Header */}
+          <div className="text-center mb-8">
+            <div className="w-14 h-14 rounded-2xl bg-blue-600 flex items-center justify-center mx-auto mb-4 shadow-lg shadow-blue-500/30">
+              <Home className="w-7 h-7 text-white" />
+            </div>
+            <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Sign in</h1>
+            <p className="text-slate-500 text-sm mt-1.5">Access your boarding house portal</p>
+          </div>
+
+          <div className="card-elevated p-6">
+            {/* User type toggle */}
+            <div className="flex gap-1 bg-slate-100 p-1 rounded-xl mb-6">
+              {[
+                { value: "tenant", label: "Tenant" },
+                { value: "admin", label: "Admin" },
+              ].map((opt) => (
+                <label key={opt.value} className="flex-1 cursor-pointer">
+                  <input
+                    type="radio"
+                    value={opt.value}
+                    {...register("userType")}
+                    className="sr-only"
+                  />
+                  <div
+                    className={`py-2 text-center text-sm font-semibold rounded-lg transition-all ${
+                      userType === opt.value
+                        ? "bg-white text-blue-700 shadow-sm"
+                        : "text-slate-500"
+                    }`}
+                  >
+                    {opt.label}
+                  </div>
+                </label>
+              ))}
+            </div>
+
+            <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+              {/* Email */}
+              <div>
+                <label className="label">Email address</label>
+                <div className="relative">
+                  <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    type="email"
+                    placeholder="you@example.com"
+                    {...register("email")}
+                    className={`input pl-10 ${errors.email ? "error" : ""}`}
+                  />
                 </div>
-              </label>
-            ))}
-          </div>
+                {errors.email && (
+                  <p className="text-red-500 text-xs mt-1.5 font-medium">{errors.email.message}</p>
+                )}
+              </div>
 
-          {/* Email */}
-          <div>
-            <label htmlFor="email" className="label">
-              Email Address
-            </label>
-            <div className="relative">
-              <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-              <input
-                type="email"
-                id="email"
-                placeholder="you@example.com"
-                {...register("email")}
-                className="input pl-12"
-              />
-            </div>
-            {errors.email && <p className="text-danger text-sm mt-1">{errors.email.message}</p>}
-          </div>
+              {/* Password */}
+              <div>
+                <label className="label">Password</label>
+                <div className="relative">
+                  <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    placeholder="••••••••"
+                    {...register("password")}
+                    className={`input pl-10 pr-10 ${errors.password ? "error" : ""}`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                {errors.password && (
+                  <p className="text-red-500 text-xs mt-1.5 font-medium">{errors.password.message}</p>
+                )}
+              </div>
 
-          {/* Password */}
-          <div>
-            <label htmlFor="password" className="label">
-              Password
-            </label>
-            <div className="relative">
-              <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-              <input
-                type="password"
-                id="password"
-                placeholder="••••••••"
-                {...register("password")}
-                className="input pl-12"
-              />
-            </div>
-            {errors.password && <p className="text-danger text-sm mt-1">{errors.password.message}</p>}
-          </div>
+              {/* Admin hint */}
+              {userType === "admin" && (
+                <div className="p-3 bg-blue-50 border border-blue-100 rounded-xl text-sm">
+                  <p className="font-semibold text-blue-800 text-xs">Admin access</p>
+                  <p className="text-blue-600 text-xs mt-0.5">Use your administrator credentials</p>
+                </div>
+              )}
 
-          {/* Help Text */}
-          {userType === "admin" && (
-            <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
-              <p className="font-medium mb-1">Admin Login</p>
-              <p className="text-xs text-blue-700">Contact your administrator for credentials</p>
-            </div>
-          )}
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="btn btn-primary btn-lg mt-2"
+              >
+                {isLoading ? (
+                  <span className="flex items-center gap-2">
+                    <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                    Signing in...
+                  </span>
+                ) : (
+                  "Sign In"
+                )}
+              </button>
+            </form>
 
-          {/* Submit */}
-          <button type="submit" disabled={isLoading} className="btn btn-primary btn-lg">
-            {isLoading ? "Signing in..." : "Sign In"}
-          </button>
-
-          {/* Register Link */}
-          {userType === "tenant" && (
-            <div className="text-center pt-2">
-              <p className="text-slate-600 text-sm">
-                Don't have an account?{" "}
+            {userType === "tenant" && (
+              <p className="text-center text-sm text-slate-500 mt-5">
+                No account yet?{" "}
                 <Link href="/register" className="font-semibold text-blue-600 hover:underline">
                   Register here
                 </Link>
               </p>
-            </div>
-          )}
-        </form>
+            )}
+          </div>
+        </div>
       </div>
+
+      <footer className="text-center text-xs text-slate-400 py-5">
+        © 2025 RJ BoardHouse
+      </footer>
     </div>
   );
 }

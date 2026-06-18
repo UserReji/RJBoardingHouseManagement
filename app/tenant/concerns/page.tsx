@@ -2,145 +2,140 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Plus, ChevronRight } from "lucide-react";
+import { createSupabaseClient } from "@/lib/supabase";
+import { ChevronRight, AlertCircle, Plus } from "lucide-react";
 
 interface Concern {
   id: string;
   title: string;
   status: "open" | "in_progress" | "resolved";
-  createdAt: string;
-  replyCount: number;
+  created_at: string;
+  reply_count: number;
 }
 
+const STATUS_BADGE: Record<string, string> = {
+  open:        "badge-danger",
+  in_progress: "badge-warning",
+  resolved:    "badge-success",
+};
+
+const STATUS_LABEL: Record<string, string> = {
+  open:        "Open",
+  in_progress: "In Progress",
+  resolved:    "Resolved",
+};
+
 export default function TenantConcernsPage() {
-  const [concerns, setConcerns] = useState<Concern[]>([]);
+  const supabase = createSupabaseClient();
+  const [concerns,  setConcerns]  = useState<Concern[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Fetch tenant concerns
-    // Mock data for now
-    setConcerns([
-      {
-        id: "concern-1",
-        title: "Leaky faucet in bathroom",
-        status: "in_progress",
-        createdAt: "2025-07-10",
-        replyCount: 2,
-      },
-      {
-        id: "concern-2",
-        title: "Air conditioning not working",
-        status: "resolved",
-        createdAt: "2025-07-05",
-        replyCount: 3,
-      },
-      {
-        id: "concern-3",
-        title: "Noisy neighbors",
-        status: "open",
-        createdAt: "2025-07-15",
-        replyCount: 0,
-      },
-    ]);
-    setIsLoading(false);
+    const fetchConcerns = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const { data, error } = await supabase
+        .from("concerns")
+        .select("id, title, status, created_at, concern_replies(id)")
+        .eq("user_id", session.user.id)
+        .order("created_at", { ascending: false });
+
+      if (!error && data) {
+        setConcerns(
+          data.map((c: any) => ({
+            id:          c.id,
+            title:       c.title,
+            status:      c.status,
+            created_at:  c.created_at,
+            reply_count: c.concern_replies?.length ?? 0,
+          }))
+        );
+      }
+      setIsLoading(false);
+    };
+    fetchConcerns();
   }, []);
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "open":
-        return "badge-info";
-      case "in_progress":
-        return "badge-warning";
-      case "resolved":
-        return "badge-success";
-      default:
-        return "badge-slate";
-    }
-  };
-
-  const getStatusLabel = (status: string) => {
-    switch (status) {
-      case "open":
-        return "Open";
-      case "in_progress":
-        return "In Progress";
-      case "resolved":
-        return "Resolved";
-      default:
-        return status;
-    }
-  };
-
-  if (isLoading) {
-    return (
-      <div className="page">
-        <div className="page-content flex items-center justify-center">
-          <div className="text-center">
-            <div className="w-12 h-12 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-4" />
-            <p className="text-slate-600">Loading concerns...</p>
-          </div>
-        </div>
+  if (isLoading) return (
+    <div className="flex items-center justify-center min-h-[60vh]">
+      <div className="text-center">
+        <div className="spinner mx-auto mb-3" />
+        <p className="text-sm text-slate-500">Loading concerns…</p>
       </div>
-    );
-  }
+    </div>
+  );
+
+  const openCount = concerns.filter((c) => c.status === "open").length;
 
   return (
-    <div className="page md:p-6">
-      <div className="page-content md:max-w-full md:p-0">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-display-md mb-2">Concerns</h1>
-            <p className="text-slate-600">Report and track your concerns.</p>
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-widest text-blue-600 mb-1">Support</p>
+          <h1 className="text-display-md">Concerns</h1>
+          <p className="text-slate-500 text-sm mt-1">
+            {openCount > 0 ? `${openCount} open` : "No open concerns"}
+          </p>
+        </div>
+        <Link href="/tenant/concerns/new" className="btn btn-primary btn-sm flex-shrink-0">
+          <Plus className="w-4 h-4" />
+          New
+        </Link>
+      </div>
+
+      {concerns.length === 0 ? (
+        <div className="card p-12 text-center">
+          <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto mb-4">
+            <AlertCircle className="w-6 h-6 text-slate-400" />
           </div>
-          <Link href="/tenant/concerns/new" className="btn btn-primary btn-sm hidden md:inline-flex">
-            <Plus className="w-4 h-4 mr-1" />
-            New
+          <p className="font-semibold text-slate-700">No concerns yet</p>
+          <p className="text-sm text-slate-400 mt-1 mb-4">
+            Report maintenance issues or anything that needs attention.
+          </p>
+          <Link href="/tenant/concerns/new" className="btn btn-primary btn-sm inline-flex">
+            <Plus className="w-4 h-4" />
+            Post a Concern
           </Link>
         </div>
+      ) : (
+        <div className="space-y-2">
+          {concerns.map((concern) => (
+            <Link
+              key={concern.id}
+              href={`/tenant/concerns/${concern.id}`}
+              className="card p-4 hover:shadow-md transition-all flex items-start gap-4 group"
+            >
+              <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                <AlertCircle className={`w-5 h-5 ${
+                  concern.status === "open"
+                    ? "text-red-500"
+                    : concern.status === "in_progress"
+                    ? "text-amber-500"
+                    : "text-emerald-500"
+                }`} />
+              </div>
 
-        {/* Mobile New Button */}
-        <Link href="/tenant/concerns/new" className="btn btn-primary btn-lg w-full mb-6 md:hidden">
-          <Plus className="w-4 h-4 mr-2" />
-          Post a Concern
-        </Link>
-
-        {/* Concerns List */}
-        <div className="space-y-3">
-          {concerns.length === 0 ? (
-            <div className="card p-8 text-center">
-              <p className="text-slate-600 mb-4">No concerns yet.</p>
-              <Link href="/tenant/concerns/new" className="btn btn-primary btn-md">
-                Post Your First Concern
-              </Link>
-            </div>
-          ) : (
-            concerns.map((concern) => (
-              <Link
-                key={concern.id}
-                href={`/tenant/concerns/${concern.id}`}
-                className="card p-4 border border-slate-200 hover:shadow-md transition-shadow"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-2">
-                      <h3 className="font-medium text-slate-900 truncate">{concern.title}</h3>
-                      <span className={`badge ${getStatusColor(concern.status)} flex-shrink-0`}>
-                        {getStatusLabel(concern.status)}
-                      </span>
-                    </div>
-                    <p className="text-sm text-slate-500">
-                      {new Date(concern.createdAt).toLocaleDateString()} • {concern.replyCount} reply
-                      {concern.replyCount !== 1 ? "ies" : ""}
-                    </p>
-                  </div>
-                  <ChevronRight className="w-5 h-5 text-slate-400 flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                  <p className="font-semibold text-slate-900 truncate">{concern.title}</p>
+                  <span className={`badge ${STATUS_BADGE[concern.status]}`}>
+                    {STATUS_LABEL[concern.status]}
+                  </span>
                 </div>
-              </Link>
-            ))
-          )}
+                <p className="text-xs text-slate-400">
+                  {new Date(concern.created_at).toLocaleDateString("en-PH", {
+                    month: "short", day: "numeric", year: "numeric",
+                  })} · {concern.reply_count} {concern.reply_count === 1 ? "reply" : "replies"}
+                </p>
+              </div>
+
+              <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-slate-700 flex-shrink-0 mt-1" />
+            </Link>
+          ))}
         </div>
-      </div>
+      )}
     </div>
   );
 }

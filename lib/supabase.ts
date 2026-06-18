@@ -34,8 +34,8 @@ export function createSupabaseClient() {
  * Hardcoded admin credentials
  */
 export const ADMIN_CREDENTIALS = {
-  email: "admin1@boardhouse.local",
-  password: "rjboardinghouse042791",
+  email: "admin1",
+  password: "rj042791",
 };
 
 /**

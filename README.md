@@ -18,29 +18,47 @@ A mobile-first Next.js 15 application for managing boarding house operations, te
 ```
 app/
 ├── (public pages)
-├── login/              # Tenant & Admin login
+├── login/              # Tenant & Admin login (admin login also sets adminSession cookie)
 ├── register/           # Tenant registration (multi-step form)
-├── admin/              # Admin dashboard & management
+├── admin/              # Admin dashboard & management (server components, service-role)
 │   ├── layout.tsx      # Admin navigation & auth guard
 │   ├── dashboard/      # Overview, stats, quick actions
 │   ├── rooms/          # Room management & details
-│   ├── tenants/        # Tenant management & approval
-│   ├── bills/          # Billing & bill creation
-│   ├── payments/       # GCash verification queue
-│   ├── concerns/       # Concern management & replies
+│   ├── tenants/        # Tenant management & inline approve/reject
+│   ├── bills/          # Billing, create, mark-paid, breakdown
+│   ├── payments/       # GCash verification queue (auto-flip bill to paid)
+│   ├── concerns/       # Concern management with reply thread
 │   └── settings/       # System settings (rates, GCash QR)
-├── tenant/             # Tenant dashboard & management
+├── tenant/             # Tenant dashboard & management (client, RLS-bound)
 │   ├── layout.tsx      # Tenant navigation & auth guard
 │   ├── dashboard/      # Summary, current bill, quick actions
-│   ├── bills/          # Bill history & payment
+│   ├── bills/          # Bill history & GCash payment
 │   ├── payments/       # Payment history
-│   ├── concerns/       # Post & track concerns
+│   ├── concerns/       # Post & reply to concerns
 │   └── profile/        # View personal & contract info
+├── api/
+│   ├── admin/          # Server-side admin actions (require adminSession cookie + service-role)
+│   │   ├── login/      # Sets the admin cookie
+│   │   ├── logout/
+│   │   ├── tenants/    # approve, reject, unassign-room
+│   │   ├── bills/      # create, mark-paid, mark-unpaid
+│   │   ├── payments/   # verify/reject (auto-flips bill status)
+│   │   ├── concerns/   # reply, status
+│   │   └── rooms/      # update
+│   └── tenant/
+│       └── concerns/   # reply
 lib/
-├── supabase.ts         # Supabase client & auth helpers
+├── supabase.ts         # Browser Supabase client + admin credential check
+├── supabase.server.ts  # Server client (anon + cookies) for tenant pages
+├── supabase.admin.ts   # Service-role client for admin server actions
 ├── session.ts          # Session management & route guards
 ├── types.ts            # TypeScript domain types
-└── validators.ts       # Zod validation schemas
+├── validators.ts       # Zod validation schemas
+└── components/
+    └── SidebarDrawer.tsx  # Shared desktop sidebar + mobile drawer
+supabase/
+└── migrations/
+    └── 0001_initial_schema.sql  # Run once in SQL Editor
 ```
 
 ## Getting Started
@@ -61,11 +79,24 @@ npm install
 ```env
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+
+# Required for admin pages (room/tenant/bill/concern management).
+# Get it from Supabase Dashboard → Project Settings → API → service_role (secret).
+# Never expose this to the browser — it is only used by server components and
+# route handlers. The admin layout verifies the adminSession cookie before
+# any server-side call, so the key alone is not enough to do damage.
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 ```
 
 ### 3. Create Database Schema
 
-Run the SQL migration in Supabase SQL Editor:
+Run the migration in Supabase SQL Editor:
+
+1. Open the file `supabase/migrations/0001_initial_schema.sql` in this repo
+2. In Supabase Dashboard → SQL Editor → New query
+3. Paste the entire contents and click **Run**
+
+It creates 12 tables, the `public-assets` storage bucket, a trigger that auto-creates a `users` row on signup, and row-level security policies.
 
 ```sql
 -- Create users table (extends Supabase Auth)
@@ -221,7 +252,11 @@ INSERT INTO rooms (room_number, price) VALUES
 (8, 2500);
 ```
 
-### 4. Set Up Resend (Email)
+### 4. (Optional) Disable email confirmation for testing
+
+In Supabase → **Authentication → Providers → Email** → turn OFF "Confirm email" while you're developing. Tenants can sign up and log in immediately. Turn it back on for production.
+
+### 5. Set Up Resend (Email)
 
 1. Create account at [resend.com](https://resend.com)
 2. Generate API key
@@ -231,15 +266,12 @@ INSERT INTO rooms (room_number, price) VALUES
 RESEND_API_KEY=your-resend-key
 ```
 
-### 5. Supabase Storage
+### 6. Supabase Storage
 
-Enable the `Storage` feature in Supabase and create buckets:
-- `room-photos`
-- `bill-photos`
-- `concern-photos`
-- `payment-screenshots`
-
-Make these buckets public for image display.
+The migration already creates the `public-assets` bucket (public). It's used for:
+- GCash QR (uploaded from Admin → Settings)
+- Tenant concern photos
+- GCash payment screenshots
 
 ### 6. Run Development Server
 
@@ -306,6 +338,7 @@ git push origin main
 Set environment variables in Vercel dashboard:
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
 - `RESEND_API_KEY`
 
 ## Next Steps

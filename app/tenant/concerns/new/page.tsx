@@ -8,9 +8,11 @@ import toast from "react-hot-toast";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { CreateConcernSchema, CreateConcernInput } from "@/lib/validators";
+import { createSupabaseClient } from "@/lib/supabase";
 
 export default function NewConcernPage() {
   const router = useRouter();
+  const supabase = createSupabaseClient();
   const [photos, setPhotos] = useState<File[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -41,7 +43,53 @@ export default function NewConcernPage() {
   const onSubmit = async (data: CreateConcernInput) => {
     setIsSubmitting(true);
     try {
-      // TODO: Upload photos to Supabase Storage and create concern record
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        toast.error("You must be signed in to post a concern.");
+        router.push("/login");
+        return;
+      }
+      const userId = session.user.id;
+
+      // 1. Insert the concern row
+      const { data: concern, error: concernErr } = await supabase
+        .from("concerns")
+        .insert({
+          user_id: userId,
+          title:   data.title,
+          body:    data.body,
+          status:  "open",
+        })
+        .select("id")
+        .single();
+
+      if (concernErr || !concern) throw concernErr ?? new Error("Failed to create concern");
+
+      // 2. Upload photos to the public-assets bucket, then record URLs
+      for (const file of photos) {
+        const ext  = file.name.split(".").pop() || "jpg";
+        const path = `concerns/${userId}/${concern.id}/${crypto.randomUUID()}.${ext}`;
+
+        const { error: uploadErr } = await supabase.storage
+          .from("public-assets")
+          .upload(path, file, { upsert: false });
+
+        if (uploadErr) throw uploadErr;
+
+        const { data: urlData } = supabase.storage
+          .from("public-assets")
+          .getPublicUrl(path);
+
+        const { error: photoErr } = await supabase
+          .from("concern_photos")
+          .insert({
+            concern_id: concern.id,
+            photo_url:  urlData.publicUrl,
+          });
+
+        if (photoErr) throw photoErr;
+      }
+
       toast.success("Concern posted successfully");
       router.push("/tenant/concerns");
     } catch (error) {

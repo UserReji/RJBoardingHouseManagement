@@ -32,13 +32,20 @@ export default function LoginPage() {
     setIsLoading(true);
     try {
       if (data.userType === "admin") {
-        if (isValidAdminCredentials(data.email, data.password)) {
-          localStorage.setItem("adminSession", JSON.stringify({ email: data.email }));
-          toast.success("Welcome back, Admin!");
-          router.push("/admin/dashboard");
-        } else {
+        if (!isValidAdminCredentials(data.email, data.password)) {
           toast.error("Invalid admin credentials");
+          return;
         }
+        // Set the adminSession cookie via the API so server actions can read it.
+        const res = await fetch("/api/admin/login", {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify({ email: data.email, password: data.password }),
+        });
+        if (!res.ok) { toast.error("Could not start admin session"); return; }
+        localStorage.setItem("adminSession", JSON.stringify({ email: data.email }));
+        toast.success("Welcome back, Admin!");
+        router.push("/admin/dashboard");
       } else {
         const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
           email: data.email,

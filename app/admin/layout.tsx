@@ -41,8 +41,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   if (!isAuthorized) return null;
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     localStorage.removeItem("adminSession");
+    try { await fetch("/api/admin/logout", { method: "POST" }); } catch { /* ignore */ }
     router.push("/login");
   };
 

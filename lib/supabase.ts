@@ -18,6 +18,15 @@ const supabaseAnonKey =
  * Use in client components for real-time and auth operations
  */
 export function createSupabaseClient() {
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error(
+      "Supabase env vars are missing at runtime. " +
+        "On Vercel, set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY " +
+        "(or NEXT_PUBLIC_SUPABASE_ANON_KEY) in Project Settings → Environment Variables, " +
+        "then redeploy. Locally, they should be in .env.local. " +
+        "See https://supabase.com/dashboard/project/_/settings/api"
+    );
+  }
   return createBrowserClient(supabaseUrl, supabaseAnonKey);
 }
 

@@ -24,6 +24,14 @@ type CookieToSet = { name: string; value: string; options: CookieOptions };
  * Server Actions). Reads/writes the auth session via Next.js cookies.
  */
 export async function createSupabaseServerClient() {
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error(
+      "Supabase env vars are missing. " +
+        "On Vercel, set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY " +
+        "(or NEXT_PUBLIC_SUPABASE_ANON_KEY) in Project Settings → Environment Variables, " +
+        "then redeploy. Locally, they should be in .env.local."
+    );
+  }
   const cookieStore = await cookies();
   return createServerClient(supabaseUrl, supabaseAnonKey, {
     cookies: {

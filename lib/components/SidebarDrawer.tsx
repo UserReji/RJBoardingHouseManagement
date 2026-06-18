@@ -106,7 +106,7 @@ export default function SidebarDrawer({
   return (
     <>
       {/* ── Desktop sidebar (md+) ── */}
-      <aside className="hidden md:flex sidebar">{SidebarBody}</aside>
+      <aside className="sidebar hidden md:flex">{SidebarBody}</aside>
 
       {/* ── Mobile top bar (md-) ── */}
       <header className="md:hidden bg-white border-b border-slate-200 sticky top-0 z-50 safe-top">
@@ -142,7 +142,7 @@ export default function SidebarDrawer({
       {/* ── Drawer panel (mobile only) ── */}
       <aside
         id="app-drawer"
-        className={`drawer md:hidden ${open ? "open" : ""}`}
+        className={`drawer flex md:hidden ${open ? "open" : ""}`}
         role="dialog"
         aria-modal="true"
         aria-label="Navigation menu"

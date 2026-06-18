@@ -3,7 +3,10 @@
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 
-export default function BillDetailPage({ params }: { params: { id: string } }) {
+type PageProps = { params: Promise<{ id: string }> };
+
+export default async function BillDetailPage({ params }: PageProps) {
+  const { id } = await params;
   return (
     <div className="page md:p-6">
       <div className="page-content md:max-w-full md:p-0">
@@ -15,7 +18,7 @@ export default function BillDetailPage({ params }: { params: { id: string } }) {
         </div>
 
         <div className="card p-6">
-          <p className="text-slate-600">Bill {params.id} detail page coming soon.</p>
+          <p className="text-slate-600">Bill {id} detail page coming soon.</p>
         </div>
       </div>
     </div>

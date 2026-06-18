@@ -46,7 +46,11 @@ create table if not exists public.rooms (
   updated_at    timestamptz not null default now()
 );
 
--- Now wire users.room_id → rooms.id (had to defer because rooms didn't exist yet)
+-- Now wire users.room_id → rooms.id (had to defer because rooms didn't exist yet).
+-- Drop first so re-running the migration doesn't fail with "constraint already exists".
+alter table public.users
+  drop constraint if exists users_room_id_fkey;
+
 alter table public.users
   add constraint users_room_id_fkey
   foreign key (room_id) references public.rooms(id) on delete set null;

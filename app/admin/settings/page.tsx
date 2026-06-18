@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createSupabaseClient } from "@/lib/supabase";
 import { Settings as SettingsIcon, Upload, Save, Zap, Users2, QrCode } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -12,7 +11,6 @@ interface AppSettings {
 }
 
 export default function AdminSettingsPage() {
-  const supabase   = createSupabaseClient();
   const [settings, setSettings]  = useState<AppSettings>({ kwh_rate: 2, extra_occupant_rate: 25 });
   const [qrFile,   setQrFile]    = useState<File | null>(null);
   const [qrPreview,setQrPreview] = useState<string | null>(null);
@@ -21,20 +19,26 @@ export default function AdminSettingsPage() {
 
   useEffect(() => {
     const fetchSettings = async () => {
-      // maybeSingle() returns null instead of erroring when no row exists.
-      const { data } = await supabase.from("settings").select("*").eq("id", 1).maybeSingle();
-      if (data) {
-        setSettings({
-          kwh_rate:            data.kwh_rate ?? 2,
-          extra_occupant_rate: data.extra_occupant_rate ?? 25,
-          gcash_qr_url:        data.gcash_qr_url ?? undefined,
-        });
-        if (data.gcash_qr_url) setQrPreview(data.gcash_qr_url);
+      // Read via the admin API (service-role) — the anon key is denied by RLS
+      // on the settings table, which is why the page used to revert to defaults.
+      try {
+        const res = await fetch("/api/admin/settings", { cache: "no-store" });
+        const { settings: data } = await res.json();
+        if (data) {
+          setSettings({
+            kwh_rate:            Number(data.kwh_rate) || 2,
+            extra_occupant_rate: Number(data.extra_occupant_rate) || 25,
+            gcash_qr_url:        data.gcash_qr_url ?? undefined,
+          });
+          if (data.gcash_qr_url) setQrPreview(data.gcash_qr_url);
+        }
+      } catch (err) {
+        console.error("Failed to load settings", err);
+      } finally {
+        setIsLoading(false);
       }
-      setIsLoading(false);
     };
     fetchSettings();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleQrChange = (e: React.ChangeEvent<HTMLInputElement>) => {

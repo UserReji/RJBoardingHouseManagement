@@ -2,6 +2,27 @@ import { NextResponse } from "next/server";
 import { createAdminSupabaseClient } from "@/lib/supabase.admin";
 
 /**
+ * GET  /api/admin/settings — returns the current settings row (or null).
+ * POST /api/admin/settings — updates the settings row.
+ *
+ * Both go through the service-role client because the admin does not have
+ * a Supabase auth session (hardcoded credentials + adminSession cookie).
+ * RLS on the `settings` table only allows `authenticated` to read, so the
+ * page can NOT read directly with the anon key.
+ */
+
+export async function GET() {
+  const supabase = await createAdminSupabaseClient();
+  const { data, error } = await supabase
+    .from("settings")
+    .select("kwh_rate, extra_occupant_rate, gcash_qr_url")
+    .eq("id", 1)
+    .maybeSingle();
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ settings: data ?? null });
+}
+
+/**
  * POST /api/admin/settings
  * Body: { kwh_rate: number; extra_occupant_rate: number }
  * Admin writes to the `settings` row (id = 1) using the service-role client.

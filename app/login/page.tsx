@@ -7,8 +7,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import toast from "react-hot-toast";
 import { LoginSchema, LoginInput } from "@/lib/validators";
-import { createSupabaseClient } from "@/lib/supabase";
-import { isAdminCredentials } from "@/lib/session";
+import { createSupabaseClient, isValidAdminCredentials } from "@/lib/supabase";
 import { Mail, Lock, ChevronLeft } from "lucide-react";
 
 export default function LoginPage() {
@@ -33,7 +32,7 @@ export default function LoginPage() {
     try {
       if (data.userType === "admin") {
         // Admin login with hardcoded credentials
-        if (isAdminCredentials(data.email, data.password)) {
+        if (isValidAdminCredentials(data.email, data.password)) {
           // Store admin session in localStorage
           localStorage.setItem("adminSession", JSON.stringify({ email: data.email }));
           toast.success("Welcome Admin!");

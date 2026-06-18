@@ -3,7 +3,8 @@
  */
 
 import { redirect } from "next/navigation";
-import { getServerSession, getServerUser, isValidAdminCredentials } from "./supabase";
+import { getServerSession, getServerUser } from "./supabase.server";
+import { isValidAdminCredentials } from "./supabase";
 import { User, UserRole } from "./types";
 
 /**

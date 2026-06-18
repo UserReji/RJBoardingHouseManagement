@@ -1,9 +1,11 @@
 /**
- * Supabase client utilities
+ * Supabase client utilities — browser/client-side only.
+ *
+ * Anything that uses `next/headers` lives in `lib/supabase.server.ts` so this
+ * file stays safe to import from `"use client"` components.
  */
 
-import { cookies } from "next/headers";
-import { createBrowserClient, createServerClient } from "@supabase/ssr";
+import { createBrowserClient } from "@supabase/ssr";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const supabaseAnonKey =
@@ -20,60 +22,6 @@ export function createSupabaseClient() {
 }
 
 /**
- * Server-side Supabase client (for use in Server Components, Route Handlers, Server Actions)
- * Reads/writes the auth session via Next.js cookies.
- */
-export async function createSupabaseServerClient() {
-  const cookieStore = await cookies();
-  return createServerClient(supabaseUrl, supabaseAnonKey, {
-    cookies: {
-      getAll() {
-        return cookieStore.getAll();
-      },
-      setAll(cookiesToSet) {
-        try {
-          cookiesToSet.forEach(({ name, value, options }) => {
-            cookieStore.set(name, value, options);
-          });
-        } catch {
-          // Called from a Server Component (read-only context) — ignore.
-        }
-      },
-    },
-  });
-}
-
-/**
- * Get the current authenticated user (with profile) from the server.
- * Returns null when no session.
- */
-export async function getServerUser() {
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
-  const { data: profile } = await supabase
-    .from("users")
-    .select("*")
-    .eq("id", user.id)
-    .single();
-  return profile ?? null;
-}
-
-/**
- * Get the current Supabase session (lightweight wrapper).
- * Returns null when no session.
- */
-export async function getServerSession() {
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  return session;
-}
-
-/**
  * Hardcoded admin credentials
  */
 export const ADMIN_CREDENTIALS = {
@@ -87,4 +35,3 @@ export const ADMIN_CREDENTIALS = {
 export function isValidAdminCredentials(email: string, password: string): boolean {
   return email === ADMIN_CREDENTIALS.email && password === ADMIN_CREDENTIALS.password;
 }
-

@@ -21,7 +21,8 @@ export default function AdminSettingsPage() {
 
   useEffect(() => {
     const fetchSettings = async () => {
-      const { data } = await supabase.from("settings").select("*").single();
+      // maybeSingle() returns null instead of erroring when no row exists.
+      const { data } = await supabase.from("settings").select("*").eq("id", 1).maybeSingle();
       if (data) {
         setSettings({
           kwh_rate:            data.kwh_rate ?? 2,
@@ -33,6 +34,7 @@ export default function AdminSettingsPage() {
       setIsLoading(false);
     };
     fetchSettings();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleQrChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -46,30 +48,40 @@ export default function AdminSettingsPage() {
     e.preventDefault();
     setIsSaving(true);
     try {
-      let gcash_qr_url = settings.gcash_qr_url;
-
-      // Upload QR if new file selected
-      if (qrFile) {
-        const ext  = qrFile.name.split(".").pop();
-        const path = `gcash-qr/qr.${ext}`;
-        const { error: uploadError } = await supabase.storage
-          .from("public-assets")
-          .upload(path, qrFile, { upsert: true });
-        if (uploadError) throw uploadError;
-        const { data: urlData } = supabase.storage.from("public-assets").getPublicUrl(path);
-        gcash_qr_url = urlData.publicUrl;
+      // 1. Save rates through the admin server route (uses service-role key).
+      const ratesRes = await fetch("/api/admin/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          kwh_rate:            settings.kwh_rate,
+          extra_occupant_rate: settings.extra_occupant_rate,
+        }),
+      });
+      if (!ratesRes.ok) {
+        const err = await ratesRes.json().catch(() => ({}));
+        throw new Error(err?.error ?? "Failed to save rates");
       }
 
-      const { error } = await supabase
-        .from("settings")
-        .upsert({ id: 1, ...settings, gcash_qr_url }, { onConflict: "id" });
+      // 2. If a new QR was picked, upload it via the admin server route too.
+      let gcash_qr_url = settings.gcash_qr_url;
+      if (qrFile) {
+        const form = new FormData();
+        form.append("file", qrFile);
+        const qrRes = await fetch("/api/admin/settings/qr", { method: "POST", body: form });
+        if (!qrRes.ok) {
+          const err = await qrRes.json().catch(() => ({}));
+          throw new Error(err?.error ?? "Failed to upload QR");
+        }
+        const { gcash_qr_url: url } = await qrRes.json();
+        gcash_qr_url = url;
+      }
 
-      if (error) throw error;
       setSettings((s) => ({ ...s, gcash_qr_url }));
+      if (qrFile) setQrFile(null);
       toast.success("Settings saved");
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      toast.error("Failed to save settings");
+      toast.error(err?.message ?? "Failed to save settings");
     } finally {
       setIsSaving(false);
     }

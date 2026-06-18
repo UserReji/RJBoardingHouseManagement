@@ -1,12 +1,15 @@
 "use client";
 
+import { use } from "react";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 
-type PageProps = { params: Promise<{ id: string }> };
-
-export default async function BillDetailPage({ params }: PageProps) {
-  const { id } = await params;
+export default function BillDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = use(params);
   return (
     <div className="page md:p-6">
       <div className="page-content md:max-w-full md:p-0">

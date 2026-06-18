@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { use, useState } from "react";
 import Link from "next/link";
 import { ChevronLeft, Home, Zap, Users, Upload } from "lucide-react";
 import toast from "react-hot-toast";
@@ -21,9 +21,14 @@ interface BillDetail {
   extraOccupantRate: number;
 }
 
-export default function BillDetailPage({ params }: { params: { id: string } }) {
+export default function BillDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = use(params);
   const [bill] = useState<BillDetail>({
-    id: params.id,
+    id,
     roomNumber: 3,
     billingPeriodStart: "2025-07-01",
     billingPeriodEnd: "2025-07-31",

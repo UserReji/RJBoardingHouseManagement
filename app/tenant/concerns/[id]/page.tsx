@@ -1,9 +1,15 @@
 "use client";
 
+import { use } from "react";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 
-export default function ConcernDetailPage({ params }: { params: { id: string } }) {
+export default function ConcernDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = use(params);
   return (
     <div className="page md:p-6">
       <div className="page-content md:max-w-full md:p-0">
@@ -15,7 +21,7 @@ export default function ConcernDetailPage({ params }: { params: { id: string } }
         </div>
 
         <div className="card p-6">
-          <p className="text-slate-600">Concern {params.id} detail page coming soon.</p>
+          <p className="text-slate-600">Concern {id} detail page coming soon.</p>
         </div>
       </div>
     </div>

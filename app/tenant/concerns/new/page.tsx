@@ -22,6 +22,7 @@ export default function NewConcernPage() {
     formState: { errors },
   } = useForm<CreateConcernInput>({
     resolver: zodResolver(CreateConcernSchema),
+    shouldFocusError: false,
   });
 
   const handleAddPhoto = (e: React.ChangeEvent<HTMLInputElement>) => {

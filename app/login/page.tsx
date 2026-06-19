@@ -24,6 +24,7 @@ export default function LoginPage() {
   } = useForm<LoginInput>({
     resolver: zodResolver(LoginSchema),
     defaultValues: { userType: "tenant" },
+    shouldFocusError: false,
   });
 
   const userType = watch("userType");

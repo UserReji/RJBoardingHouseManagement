@@ -116,16 +116,21 @@ body {
   background: #fff;
   color: #0f172a;
   font-size: 0.9375rem;
-  transition: border-color 150ms, box-shadow 150ms;
+  /* outline-offset ring avoids box-shadow layout shift, so focus state
+     never pushes the input out of place while typing. */
+  transition: border-color 150ms, outline-color 150ms, outline-offset 0s;
+  outline: 2px solid transparent;
+  outline-offset: 2px;
 }
 .input:focus {
   outline: none;
   border-color: #2563eb;
-  box-shadow: 0 0 0 3px rgb(37 99 235 / 0.12);
+  outline: 2px solid rgb(37 99 235 / 0.35);
+  outline-offset: 2px;
 }
 .input:disabled { background: #f8fafc; color: #94a3b8; cursor: not-allowed; }
 .input.error { border-color: #ef4444; }
-.input.error:focus { box-shadow: 0 0 0 3px rgb(239 68 68 / 0.12); }
+.input.error:focus { outline: 2px solid rgb(239 68 68 / 0.35); }
 
 .label {
   display: block;

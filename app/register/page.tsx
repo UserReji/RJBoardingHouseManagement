@@ -33,6 +33,7 @@ export default function RegisterPage() {
   } = useForm<TenantRegistrationInput>({
     resolver: zodResolver(TenantRegistrationSchema),
     mode: "onChange",
+    shouldFocusError: false,
   });
 
   const stepFieldMap: Record<number, (keyof TenantRegistrationInput)[]> = {
@@ -93,7 +94,11 @@ export default function RegisterPage() {
     <div>
       <label htmlFor={id} className="label">{label}</label>
       {children}
-      {error && <p className="text-red-500 text-xs mt-1.5 font-medium">{error}</p>}
+      {/* Reserve space so the error message appearing doesn't reflow the form
+          and shove the active input out from under the user's caret. */}
+      <p className="text-red-500 text-xs mt-1.5 font-medium min-h-[1.25rem]" aria-live="polite">
+        {error ?? " "}
+      </p>
     </div>
   );
 

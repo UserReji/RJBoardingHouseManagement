@@ -5,8 +5,8 @@ import { createAdminSupabaseClient } from "@/lib/supabase.admin";
  * GET  /api/admin/settings — returns the current settings row (or null).
  * POST /api/admin/settings — updates the settings row.
  *
- * Both go through the service-role client because the admin does not have
- * a Supabase auth session (hardcoded credentials + adminSession cookie).
+ * Both go through the server-only secret client because the admin does not
+ * have a Supabase auth session (verified adminSession cookie).
  * RLS on the `settings` table only allows `authenticated` to read, so the
  * page can NOT read directly with the anon key.
  */

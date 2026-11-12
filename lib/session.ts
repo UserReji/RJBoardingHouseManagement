@@ -4,7 +4,6 @@
 
 import { redirect } from "next/navigation";
 import { getServerSession, getServerUser } from "./supabase.server";
-import { isValidAdminCredentials } from "./supabase";
 import { User, UserRole } from "./types";
 
 /**
@@ -61,13 +60,6 @@ export async function getOptionalUser(): Promise<User | null> {
   } catch {
     return null;
   }
-}
-
-/**
- * Check if user is admin (client-side check based on stored credentials)
- */
-export function isAdminCredentials(email: string, password: string): boolean {
-  return isValidAdminCredentials(email, password);
 }
 
 /**

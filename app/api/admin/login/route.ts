@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { checkAdminCredentials } from "@/lib/supabase.admin";
+import { checkAdminCredentials, createAdminSession } from "@/lib/admin-auth";
 
 /**
  * POST /api/admin/login
@@ -23,7 +23,7 @@ export async function POST(req: Request) {
   }
 
   const res = NextResponse.json({ ok: true });
-  res.cookies.set("adminSession", JSON.stringify({ email }), {
+  res.cookies.set("adminSession", createAdminSession(email), {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",

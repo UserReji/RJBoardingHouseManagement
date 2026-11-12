@@ -4,7 +4,7 @@ A mobile-first Next.js 15 application for managing boarding house operations, te
 
 ## Tech Stack
 
-- **Framework**: Next.js 15 (App Router)
+- **Framework**: Next.js 16 (App Router)
 - **Database**: Supabase (PostgreSQL)
 - **Authentication**: Supabase Auth + Hardcoded Admin
 - **File Storage**: Supabase Storage
@@ -78,14 +78,16 @@ npm install
 
 ```env
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_your_key
 
 # Required for admin pages (room/tenant/bill/concern management).
-# Get it from Supabase Dashboard → Project Settings → API → service_role (secret).
-# Never expose this to the browser — it is only used by server components and
-# route handlers. The admin layout verifies the adminSession cookie before
-# any server-side call, so the key alone is not enough to do damage.
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+# Get it from Supabase Dashboard → Settings → API Keys → Secret key.
+# Never expose this to the browser. It is used only by server components and
+# route handlers, which verify a signed adminSession cookie before database access.
+SUPABASE_SECRET_KEY=sb_secret_your_server_only_key
+ADMIN_EMAIL=admin@example.com
+ADMIN_PASSWORD=use-a-strong-unique-password
+ADMIN_SESSION_SECRET=generate-a-long-random-secret
 ```
 
 ### 3. Create Database Schema
@@ -285,8 +287,7 @@ Open [http://localhost:3000](http://localhost:3000)
 
 ### Admin
 
-- **Email**: `admin1@boardhouse.local`
-- **Password**: `rjboardinghouse042791`
+Use the server-only `ADMIN_EMAIL` and `ADMIN_PASSWORD` environment variables. The credentials are checked on the server and are never bundled into the browser.
 
 ### Tenant (After Registration)
 
@@ -318,7 +319,7 @@ Open [http://localhost:3000](http://localhost:3000)
 
 - [ ] Landing page loads and displays room prices
 - [ ] Tenant registration completes with validation
-- [ ] Admin login works with hardcoded credentials
+- [ ] Admin login works with server-only environment credentials
 - [ ] Admin dashboard shows stats and quick actions
 - [ ] Tenant dashboard shows room info and latest bill
 - [ ] Can view bills and submit GCash payment
@@ -337,8 +338,11 @@ git push origin main
 
 Set environment variables in Vercel dashboard:
 - `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- `SUPABASE_SERVICE_ROLE_KEY`
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
+- `SUPABASE_SECRET_KEY`
+- `ADMIN_EMAIL`
+- `ADMIN_PASSWORD`
+- `ADMIN_SESSION_SECRET`
 - `RESEND_API_KEY`
 
 ## Next Steps

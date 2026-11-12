@@ -7,7 +7,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import toast from "react-hot-toast";
 import { LoginSchema, LoginInput } from "@/lib/validators";
-import { createSupabaseClient, isValidAdminCredentials } from "@/lib/supabase";
+import { createSupabaseClient } from "@/lib/supabase";
 import { Mail, Lock, Home, Eye, EyeOff } from "lucide-react";
 
 export default function LoginPage() {
@@ -33,17 +33,13 @@ export default function LoginPage() {
     setIsLoading(true);
     try {
       if (data.userType === "admin") {
-        if (!isValidAdminCredentials(data.email, data.password)) {
-          toast.error("Invalid admin credentials");
-          return;
-        }
         // Set the adminSession cookie via the API so server actions can read it.
         const res = await fetch("/api/admin/login", {
           method:  "POST",
           headers: { "Content-Type": "application/json" },
           body:    JSON.stringify({ email: data.email, password: data.password }),
         });
-        if (!res.ok) { toast.error("Could not start admin session"); return; }
+        if (!res.ok) { toast.error("Invalid admin credentials"); return; }
         localStorage.setItem("adminSession", JSON.stringify({ email: data.email }));
         toast.success("Welcome back, Admin!");
         router.push("/admin/dashboard");
@@ -83,9 +79,9 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-dvh bg-gradient-to-br from-slate-50 to-slate-100 flex flex-col">
+    <div className="auth-page">
       {/* Top bar */}
-      <div className="px-5 py-4">
+      <div className="auth-topbar">
         <Link href="/" className="inline-flex items-center gap-2 text-slate-500 hover:text-slate-800 transition-colors text-sm font-medium">
           <Home className="w-4 h-4" />
           RJ BoardHouse
@@ -93,18 +89,29 @@ export default function LoginPage() {
       </div>
 
       {/* Card */}
-      <div className="flex-1 flex items-center justify-center px-5 py-8">
-        <div className="w-full max-w-sm">
+      <main className="auth-layout">
+        <aside className="auth-intro">
+          <span className="auth-kicker">RJ BoardHouse · Davao City</span>
+          <h1>Your home, with the details in good order.</h1>
+          <p>Check your account, follow bills and payments, and reach management from one calm, private space.</p>
+          <div className="auth-points">
+            <span><Home size={16} /> A clear view of your stay</span>
+            <span><Mail size={16} /> Updates tied to your account</span>
+            <span><Lock size={16} /> Private, secure access</span>
+          </div>
+          <span className="auth-orbit" aria-hidden="true" />
+        </aside>
+        <div className="auth-form-column">
           {/* Header */}
-          <div className="text-center mb-8">
-            <div className="w-14 h-14 rounded-2xl bg-blue-600 flex items-center justify-center mx-auto mb-4 shadow-lg shadow-blue-500/30">
+          <div className="auth-heading">
+            <div className="auth-mark">
               <Home className="w-7 h-7 text-white" />
             </div>
-            <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Sign in</h1>
-            <p className="text-slate-500 text-sm mt-1.5">Access your boarding house portal</p>
+            <h2>Sign in</h2>
+            <p>Access your boarding house portal</p>
           </div>
 
-          <div className="card-elevated p-6">
+          <div className="auth-card">
             {/* User type toggle */}
             <div className="flex gap-1 bg-slate-100 p-1 rounded-xl mb-6">
               {[
@@ -207,9 +214,9 @@ export default function LoginPage() {
             )}
           </div>
         </div>
-      </div>
+      </main>
 
-      <footer className="text-center text-xs text-slate-400 py-5">
+      <footer className="auth-footer">
         © 2025 RJ BoardHouse
       </footer>
     </div>

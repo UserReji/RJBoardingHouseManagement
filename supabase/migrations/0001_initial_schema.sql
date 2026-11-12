@@ -9,8 +9,7 @@
 create extension if not exists "pgcrypto";
 
 -- ============================================================================
--- 1. users (auth-linked profiles for tenants; admins are hardcoded so they
---    don't need a row here, but the FKs still allow admin inserts if desired)
+-- 1. users (auth-linked tenant profiles; admin login is server-side)
 -- ============================================================================
 create table if not exists public.users (
   id                       uuid primary key references auth.users(id) on delete cascade,
@@ -237,9 +236,19 @@ begin
     new.email,
     'tenant',
     'pending',
-    coalesce(new.raw_user_meta_data->>'full_name', split_part(new.email, '@', 1))
+    coalesce(nullif(new.raw_user_meta_data->>'full_name', ''), split_part(new.email, '@', 1))
   )
   on conflict (id) do nothing;
+  update public.users
+  set birthday = nullif(new.raw_user_meta_data->>'birthday', '')::date,
+      sex = nullif(new.raw_user_meta_data->>'sex', ''),
+      permanent_address = nullif(new.raw_user_meta_data->>'permanent_address', ''),
+      contact_number = nullif(new.raw_user_meta_data->>'contact_number', ''),
+      emergency_contact_name = nullif(new.raw_user_meta_data->>'emergency_contact_name', ''),
+      emergency_contact_number = nullif(new.raw_user_meta_data->>'emergency_contact_number', ''),
+      valid_id_type = nullif(new.raw_user_meta_data->>'valid_id_type', ''),
+      valid_id_number = nullif(new.raw_user_meta_data->>'valid_id_number', '')
+  where id = new.id;
   return new;
 end;
 $$;
@@ -266,8 +275,8 @@ create index if not exists idx_meter_readings_room      on public.meter_readings
 
 -- ============================================================================
 -- 16. Row Level Security — open inside the app; admin enforcement happens at
---     the SQL layer via your admin hardcoded login (which bypasses Supabase
---     auth). Tenants can only see/edit their own rows.
+--     the server-side admin client (which bypasses RLS). Tenant policies are
+--     limited to their own rows and actions.
 -- ============================================================================
 alter table public.users           enable row level security;
 alter table public.rooms           enable row level security;
@@ -287,15 +296,16 @@ drop policy if exists "users_select_own"      on public.users;
 drop policy if exists "users_insert_self"     on public.users;
 drop policy if exists "users_update_own"      on public.users;
 create policy "users_select_own"  on public.users for select using (auth.uid() = id);
-create policy "users_insert_self" on public.users for insert with check (auth.uid() = id);
-create policy "users_update_own"  on public.users for update using (auth.uid() = id);
+-- Profile creation runs in the trusted auth trigger. Client users cannot assign
+-- themselves a role, approve themselves, or change protected profile fields.
 
 -- rooms, room_photos, settings — readable by any signed-in user --------------
 drop policy if exists "rooms_read_all"      on public.rooms;
 drop policy if exists "room_photos_read_all" on public.room_photos;
 drop policy if exists "settings_read_all"   on public.settings;
-create policy "rooms_read_all"      on public.rooms      for select using (auth.role() = 'authenticated');
-create policy "room_photos_read_all" on public.room_photos for select using (auth.role() = 'authenticated');
+-- Public room listings power the landing page; these fields contain no tenant data.
+create policy "rooms_read_all"      on public.rooms      for select using (true);
+create policy "room_photos_read_all" on public.room_photos for select using (true);
 create policy "settings_read_all"   on public.settings   for select using (auth.role() = 'authenticated');
 
 -- contracts, meter_readings, bills, payments, concerns, replies — own rows --
@@ -322,7 +332,11 @@ create policy "bill_photos_own_r" on public.bill_photos
 create policy "payments_own_r" on public.payments
   for select using (auth.uid() = user_id);
 create policy "payments_own_w" on public.payments
-  for insert with check (auth.uid() = user_id);
+  for insert with check (
+    auth.uid() = user_id
+    and exists (select 1 from public.tenant_bills b
+                where b.id = payments.bill_id and b.user_id = auth.uid())
+  );
 create policy "concerns_own_rw" on public.concerns
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 create policy "concern_photos_own_rw" on public.concern_photos

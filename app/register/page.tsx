@@ -56,27 +56,22 @@ export default function RegisterPage() {
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email:    data.email,
         password: data.password,
+        options: {
+          data: {
+            full_name: data.full_name,
+            birthday: data.birthday,
+            sex: data.sex,
+            permanent_address: data.permanent_address,
+            contact_number: data.contact_number,
+            emergency_contact_name: data.emergency_contact_name,
+            emergency_contact_number: data.emergency_contact_number,
+            valid_id_type: data.valid_id_type,
+            valid_id_number: data.valid_id_number,
+          },
+        },
       });
       if (authError) { toast.error(authError.message || "Registration failed"); return; }
-
-      const { error: profileError } = await supabase.from("users").insert([{
-        id:                       authData.user?.id,
-        email:                    data.email,
-        role:                     "tenant",
-        registration_status:      "pending",
-        full_name:                data.full_name,
-        birthday:                 data.birthday,
-        sex:                      data.sex,
-        permanent_address:        data.permanent_address,
-        contact_number:           data.contact_number,
-        emergency_contact_name:   data.emergency_contact_name,
-        emergency_contact_number: data.emergency_contact_number,
-        valid_id_type:            data.valid_id_type,
-        valid_id_number:          data.valid_id_number,
-        created_at:               new Date().toISOString(),
-      }]);
-
-      if (profileError) { toast.error(profileError.message || "Failed to create profile"); return; }
+      if (!authData.user) { toast.error("We could not create your account. Please try again."); return; }
 
       toast.success("Registration submitted! Awaiting admin approval.");
       router.push("/login");

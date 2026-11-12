@@ -29,18 +29,3 @@ export function createSupabaseClient() {
   }
   return createBrowserClient(supabaseUrl, supabaseAnonKey);
 }
-
-/**
- * Hardcoded admin credentials
- */
-export const ADMIN_CREDENTIALS = {
-  email: "admin1@gmail.com",
-  password: "rj042791",
-};
-
-/**
- * Verify hardcoded admin credentials
- */
-export function isValidAdminCredentials(email: string, password: string): boolean {
-  return email === ADMIN_CREDENTIALS.email && password === ADMIN_CREDENTIALS.password;
-}

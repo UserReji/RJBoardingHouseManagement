@@ -1,7 +1,7 @@
 /**
- * Admin-only Supabase client (service-role).
+ * Admin-only Supabase client (secret key).
  *
- * Uses the service-role key to bypass RLS. THIS FILE MUST NEVER BE IMPORTED
+ * Uses the secret key to bypass RLS. THIS FILE MUST NEVER BE IMPORTED
  * FROM A CLIENT COMPONENT — it leaks full DB access into the browser bundle.
  * It is marked "server-only" so Next.js will fail the build if you try.
  *
@@ -14,10 +14,10 @@ import "server-only";
 
 import { cookies } from "next/headers";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { ADMIN_CREDENTIALS } from "@/lib/supabase";
+import { verifyAdminSession } from "@/lib/admin-auth";
 
 const supabaseUrl     = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-const serviceRoleKey  = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+const serviceRoleKey  = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 
 let _adminClient: SupabaseClient | null = null;
 
@@ -29,8 +29,8 @@ export async function createAdminSupabaseClient(): Promise<SupabaseClient> {
   if (!supabaseUrl || !serviceRoleKey) {
     throw new Error(
       "Admin Supabase env vars are missing. Set NEXT_PUBLIC_SUPABASE_URL and " +
-        "SUPABASE_SERVICE_ROLE_KEY in .env.local. Get the service-role key from " +
-        "Supabase Dashboard → Project Settings → API → service_role (secret)."
+        "SUPABASE_SECRET_KEY in .env.local. Get the secret key from " +
+        "Supabase Dashboard → Settings → API Keys → Secret key."
     );
   }
 
@@ -38,7 +38,7 @@ export async function createAdminSupabaseClient(): Promise<SupabaseClient> {
   // Even if someone imports this on the server, they can't query without it.
   const cookieStore = await cookies();
   const session = cookieStore.get("adminSession")?.value;
-  if (!session) throw new Error("Admin session required.");
+  if (!verifyAdminSession(session)) throw new Error("A valid admin session is required.");
 
   if (!_adminClient) {
     _adminClient = createClient(supabaseUrl, serviceRoleKey, {
@@ -46,15 +46,4 @@ export async function createAdminSupabaseClient(): Promise<SupabaseClient> {
     });
   }
   return _adminClient;
-}
-
-/**
- * Verify the hardcoded admin credentials and return a session payload, or null.
- * Used by the admin login route handler.
- */
-export function checkAdminCredentials(email: string, password: string) {
-  return (
-    email.toLowerCase() === ADMIN_CREDENTIALS.email.toLowerCase() &&
-    password === ADMIN_CREDENTIALS.password
-  );
 }

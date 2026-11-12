@@ -9,16 +9,23 @@ const geist = Geist({
 });
 
 export const metadata: Metadata = {
-  title: "RJ BoardHouse Management",
-  description: "Boarding house management system for RJ BoardHouse",
+  title: {
+    default: "RJ BoardHouse | A better place to settle in",
+    template: "%s | RJ BoardHouse",
+  },
+  description: "A welcoming boarding house in Davao, with a simple portal for rent, bills, payments, and tenant support.",
   manifest: "/manifest.json",
+  openGraph: {
+    title: "RJ BoardHouse",
+    description: "Room to live. Care made simple.",
+    type: "website",
+  },
 };
 
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
-  themeColor: "#1e3a5f",
+  themeColor: "#174d4b",
 };
 
 export default function RootLayout({
@@ -34,8 +41,8 @@ export default function RootLayout({
           toastOptions={{
             duration: 4000,
             style: {
-              borderRadius: "10px",
-              background: "#333",
+              borderRadius: "12px",
+              background: "#174d4b",
               color: "#fff",
               fontSize: "14px",
             },

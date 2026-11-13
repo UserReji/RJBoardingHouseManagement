@@ -28,10 +28,11 @@ export default async function BillDetailPage({
       id, billing_period_start, billing_period_end, status, notes,
       room_rent, extra_occupant_days, extra_occupant_rate, extra_occupant_charge,
       kwh_consumed, kwh_rate, electricity_charge, total_amount, electricity_invoice_url, meter_photo_url, credit_balance,
-      users ( id, full_name, email ),
+      users!inner ( id, full_name, email, email_confirmed_at ),
       rooms ( id, room_number, monthly_rent )
     `)
     .eq("id", id)
+    .not("users.email_confirmed_at", "is", null)
     .single();
   if (error || !bill) notFound();
 

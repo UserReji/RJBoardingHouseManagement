@@ -29,8 +29,9 @@ export default async function AdminPaymentsPage({
     .from("payments")
     .select(`
       id, amount, method, status, screenshot_url, created_at, bill_id,
-      users ( full_name )
+      users!inner ( full_name, email_confirmed_at )
     `)
+    .not("users.email_confirmed_at", "is", null)
     .order("created_at", { ascending: false });
 
   const payments = (data ?? []).map((p: any) => ({

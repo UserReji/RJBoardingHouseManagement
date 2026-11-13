@@ -8,8 +8,9 @@ export default async function AdminRoomsPage() {
     .from("rooms")
     .select(`
       id, room_number, monthly_rent, status,
-      users ( full_name )
+      users ( full_name, email_confirmed_at )
     `)
+    .not("users.email_confirmed_at", "is", null)
     .order("room_number");
 
   const rooms = (data ?? []).map((r: any) => ({

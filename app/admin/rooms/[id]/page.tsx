@@ -17,9 +17,10 @@ export default async function RoomDetailPage({
     .from("rooms")
     .select(`
       id, room_number, price, monthly_rent, status, description, created_at,
-      users ( id, full_name, email, contact_number, registration_status )
+      users ( id, full_name, email, contact_number, registration_status, email_confirmed_at )
     `)
     .eq("id", id)
+    .not("users.email_confirmed_at", "is", null)
     .single();
   if (error || !room) notFound();
 

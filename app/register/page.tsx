@@ -88,7 +88,9 @@ export default function RegisterPage() {
         return;
       }
 
-      toast.success("Registration submitted! Awaiting admin approval.");
+      toast.success(authData.session
+        ? "Registration submitted! Awaiting admin approval."
+        : "Check your email and confirm your address. Your application will appear for admin review after confirmation.");
       router.push("/login");
     } catch (err) {
       console.error(err);

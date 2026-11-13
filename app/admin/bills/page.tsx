@@ -31,9 +31,10 @@ export default async function AdminBillsPage({
     .from("tenant_bills")
     .select(`
       id, billing_period_start, billing_period_end, total_amount, status,
-      users ( full_name ),
+      users!inner ( full_name, email_confirmed_at ),
       rooms ( room_number )
     `)
+    .not("users.email_confirmed_at", "is", null)
     .order("billing_period_start", { ascending: false });
 
   const bills = (data ?? []).map((b: any) => ({

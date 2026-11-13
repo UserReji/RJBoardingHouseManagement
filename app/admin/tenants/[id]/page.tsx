@@ -30,6 +30,7 @@ export default async function TenantDetailPage({
       rooms ( room_number, monthly_rent, status )
     `)
     .eq("id", id)
+    .not("email_confirmed_at", "is", null)
     .single();
 
   if (error || !tenant) notFound();

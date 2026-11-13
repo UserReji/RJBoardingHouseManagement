@@ -24,11 +24,12 @@ export default async function ConcernDetailPage({
     .from("concerns")
     .select(`
       id, title, body, status, created_at, updated_at, user_id,
-      users ( id, full_name, email ),
+      users!inner ( id, full_name, email, email_confirmed_at ),
       concern_photos ( id, photo_url ),
       concern_replies ( id, sender_role, body, created_at )
     `)
     .eq("id", id)
+    .not("users.email_confirmed_at", "is", null)
     .single();
   if (error || !concern) notFound();
 

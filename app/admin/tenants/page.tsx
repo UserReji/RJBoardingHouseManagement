@@ -31,6 +31,7 @@ export default async function AdminTenantsPage({
       .from("users")
       .select("id, full_name, email, registration_status, created_at, rooms(room_number)")
       .eq("role", "tenant")
+      .not("email_confirmed_at", "is", null)
       .order("created_at", { ascending: false }),
     supabase
       .from("rooms")

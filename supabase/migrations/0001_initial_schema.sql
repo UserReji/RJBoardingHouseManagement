@@ -1,7 +1,8 @@
 -- ============================================================================
 -- RJ BoardHouse — complete application schema
 -- Run this in: Supabase Dashboard → SQL Editor → New query
--- Paste this entire file into Supabase SQL Editor and click Run once.
+-- Paste this entire file into Supabase SQL Editor and click Run.
+-- This consolidated schema is safe to re-run when applying schema updates.
 -- ============================================================================
 
 -- Enable required extensions -------------------------------------------------
@@ -26,11 +27,19 @@ create table if not exists public.users (
   valid_id_type            text,
   valid_id_number          text,
   room_id                  uuid,                              -- assigned room (set after approval)
+  email_confirmed_at       timestamptz,
   created_at               timestamptz not null default now(),
   updated_at               timestamptz not null default now()
 );
 
 alter table public.users add column if not exists updated_at timestamptz not null default now();
+alter table public.users add column if not exists email_confirmed_at timestamptz;
+
+-- Sync confirmation status for profiles created by the previous schema version.
+update public.users u
+set email_confirmed_at = a.email_confirmed_at
+from auth.users a
+where a.id = u.id;
 
 -- ============================================================================
 -- 2. rooms
@@ -223,8 +232,8 @@ insert into public.rooms (room_number, price, monthly_rent, status) values
 on conflict (room_number) do nothing;
 
 -- ============================================================================
--- 14. Auto-create a public.users row whenever someone signs up
--- ============================================================================
+-- 14. Create/sync tenant profiles only after email confirmation
+-- Unconfirmed accounts stay in auth.users but are not tenant records visible to admins.
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -232,47 +241,64 @@ security definer
 set search_path = public
 as $$
 begin
-  insert into public.users (id, email, role, registration_status, full_name)
-  values (
-    new.id,
-    new.email,
-    'tenant',
-    'pending',
-    coalesce(nullif(new.raw_user_meta_data->>'full_name', ''), split_part(new.email, '@', 1))
+  if new.email_confirmed_at is null then
+    update public.users
+    set email_confirmed_at = null
+    where id = new.id;
+    return new;
+  end if;
+
+  insert into public.users (
+    id, email, role, registration_status, full_name, email_confirmed_at,
+    birthday, sex, permanent_address, contact_number,
+    emergency_contact_name, emergency_contact_number, valid_id_type, valid_id_number
   )
-  on conflict (id) do nothing;
-  update public.users
-  set birthday = nullif(new.raw_user_meta_data->>'birthday', '')::date,
-      sex = nullif(new.raw_user_meta_data->>'sex', ''),
-      permanent_address = nullif(new.raw_user_meta_data->>'permanent_address', ''),
-      contact_number = nullif(new.raw_user_meta_data->>'contact_number', ''),
-      emergency_contact_name = nullif(new.raw_user_meta_data->>'emergency_contact_name', ''),
-      emergency_contact_number = nullif(new.raw_user_meta_data->>'emergency_contact_number', ''),
-      valid_id_type = nullif(new.raw_user_meta_data->>'valid_id_type', ''),
-      valid_id_number = nullif(new.raw_user_meta_data->>'valid_id_number', '')
-  where id = new.id;
+  values (
+    new.id, new.email, 'tenant', 'pending',
+    coalesce(nullif(new.raw_user_meta_data->>'full_name', ''), split_part(new.email, '@', 1)),
+    new.email_confirmed_at,
+    nullif(new.raw_user_meta_data->>'birthday', '')::date,
+    nullif(new.raw_user_meta_data->>'sex', ''),
+    nullif(new.raw_user_meta_data->>'permanent_address', ''),
+    nullif(new.raw_user_meta_data->>'contact_number', ''),
+    nullif(new.raw_user_meta_data->>'emergency_contact_name', ''),
+    nullif(new.raw_user_meta_data->>'emergency_contact_number', ''),
+    nullif(new.raw_user_meta_data->>'valid_id_type', ''),
+    nullif(new.raw_user_meta_data->>'valid_id_number', '')
+  )
+  on conflict (id) do update set
+    email = excluded.email,
+    full_name = coalesce(nullif(excluded.full_name, ''), public.users.full_name),
+    email_confirmed_at = excluded.email_confirmed_at,
+    birthday = coalesce(excluded.birthday, public.users.birthday),
+    sex = coalesce(excluded.sex, public.users.sex),
+    permanent_address = coalesce(excluded.permanent_address, public.users.permanent_address),
+    contact_number = coalesce(excluded.contact_number, public.users.contact_number),
+    emergency_contact_name = coalesce(excluded.emergency_contact_name, public.users.emergency_contact_name),
+    emergency_contact_number = coalesce(excluded.emergency_contact_number, public.users.emergency_contact_number),
+    valid_id_type = coalesce(excluded.valid_id_type, public.users.valid_id_type),
+    valid_id_number = coalesce(excluded.valid_id_number, public.users.valid_id_number);
+
   return new;
 end;
 $$;
 
 drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
-  after insert on auth.users
+  after insert or update on auth.users
   for each row execute function public.handle_new_user();
--- Backfill Auth accounts created before this profile trigger was installed.
--- This is safe to rerun: existing public.users profiles are left unchanged.
+
+-- Backfill only confirmed Auth accounts. Existing unconfirmed profiles receive a null
+-- email_confirmed_at above and are excluded by the admin tenant queries.
 insert into public.users (
-  id, email, role, registration_status, full_name,
+  id, email, role, registration_status, full_name, email_confirmed_at,
   birthday, sex, permanent_address, contact_number,
-  emergency_contact_name, emergency_contact_number,
-  valid_id_type, valid_id_number
+  emergency_contact_name, emergency_contact_number, valid_id_type, valid_id_number
 )
 select
-  a.id,
-  a.email,
-  'tenant',
-  'pending',
+  a.id, a.email, 'tenant', 'pending',
   coalesce(nullif(a.raw_user_meta_data->>'full_name', ''), split_part(a.email, '@', 1)),
+  a.email_confirmed_at,
   nullif(a.raw_user_meta_data->>'birthday', '')::date,
   nullif(a.raw_user_meta_data->>'sex', ''),
   nullif(a.raw_user_meta_data->>'permanent_address', ''),
@@ -283,7 +309,7 @@ select
   nullif(a.raw_user_meta_data->>'valid_id_number', '')
 from auth.users a
 where a.email is not null
-  and not exists (select 1 from public.users u where u.id = a.id)
+  and a.email_confirmed_at is not null
 on conflict (id) do nothing;
 
 -- ============================================================================

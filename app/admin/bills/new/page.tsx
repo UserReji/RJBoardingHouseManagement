@@ -7,7 +7,7 @@ export default async function CreateBillPage() {
   const supabase = await createAdminSupabaseClient();
   const [{ data: rooms }, { data: tenants }, { data: readings }] = await Promise.all([
     supabase.from("rooms").select("id, room_number, monthly_rent, occupant_count").order("room_number"),
-    supabase.from("users").select("id, full_name, room_id, billing_credit").eq("role", "tenant").eq("registration_status", "approved").not("room_id", "is", null),
+    supabase.from("users").select("id, full_name, room_id, billing_credit").eq("role", "tenant").eq("registration_status", "approved").not("email_confirmed_at", "is", null).not("room_id", "is", null),
     supabase.from("meter_readings").select("room_id, reading_value, reading_date").order("reading_date", { ascending: false }),
   ]);
   const tenantByRoom = new Map((tenants ?? []).map((tenant: any) => [tenant.room_id, tenant]));

@@ -12,7 +12,8 @@ export async function POST(
   const { error } = await supabase
     .from("users")
     .update({ registration_status: "rejected" })
-    .eq("id", id);
+    .eq("id", id)
+    .not("email_confirmed_at", "is", null);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   return NextResponse.json({ ok: true });

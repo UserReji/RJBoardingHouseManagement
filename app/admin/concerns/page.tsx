@@ -28,9 +28,10 @@ export default async function AdminConcernsPage({
     .from("concerns")
     .select(`
       id, title, status, created_at,
-      users ( full_name ),
+      users!inner ( full_name, email_confirmed_at ),
       concern_replies ( id )
     `)
+    .not("users.email_confirmed_at", "is", null)
     .order("created_at", { ascending: false });
 
   const concerns = (data ?? []).map((c: any) => ({

@@ -30,11 +30,15 @@ export async function POST(
   }
 
   // 2. approve + assign
-  const { error: userErr } = await supabase
+  const { data: approvedTenant, error: userErr } = await supabase
     .from("users")
     .update({ registration_status: "approved", room_id: roomId })
-    .eq("id", id);
+    .eq("id", id)
+    .not("email_confirmed_at", "is", null)
+    .select("id")
+    .maybeSingle();
   if (userErr) return NextResponse.json({ error: userErr.message }, { status: 500 });
+  if (!approvedTenant) return NextResponse.json({ error: "Confirmed tenant not found" }, { status: 404 });
 
   // 3. mark room occupied
   const { error: roomErr } = await supabase

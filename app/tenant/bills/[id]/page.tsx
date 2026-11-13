@@ -26,15 +26,17 @@ export default async function BillDetailPage({
   const { data: bill, error } = await supabase
     .from("tenant_bills")
     .select(`
-      id, billing_period_start, billing_period_end, status, notes,
+      id, billing_period_start, billing_period_end, status, notes, paid_at,
       room_rent, extra_occupant_days, extra_occupant_rate, extra_occupant_charge,
-      kwh_consumed, kwh_rate, electricity_charge, total_amount,
+      kwh_consumed, kwh_rate, electricity_charge, total_amount, electricity_invoice_url, meter_photo_url, credit_balance,
       rooms ( id, room_number )
     `)
     .eq("id", id)
     .eq("user_id", session.user.id)
     .single();
   if (error || !bill) notFound();
+
+  const { data: billLines } = await supabase.from("bill_line_items").select("id, label, amount, item_type, adjustment_note, created_at").eq("bill_id", id).order("sort_order");
 
   // Settings (GCash QR) — settings is readable by any authenticated user
   const { data: settings } = await supabase
@@ -68,19 +70,26 @@ export default async function BillDetailPage({
             </span>
           </div>
           <p className="text-blue-100 text-sm">
-            {fmt(bill.billing_period_start)} to {fmt(bill.billing_period_end)}
+            {fmt(bill.billing_period_start)} to {fmt(bill.billing_period_end)}{bill.status === "paid" && (bill as any).paid_at ? ` · Paid ${fmt((bill as any).paid_at)}` : ""}
           </p>
         </div>
 
         {/* Breakdown */}
         <div className="mb-6">
           <h3 className="text-title-md mb-4">Breakdown</h3>
-          <div className="space-y-3">
-            <Row icon={Home} title="Room Rent" sub={`Room ${room?.room_number ?? "—"}`} value={fmtMoney(bill.room_rent)} />
-            <Row icon={Zap}  title="Electricity" sub={`${Number(bill.kwh_consumed ?? 0)} kWh × ${fmtMoney(bill.kwh_rate)}/kWh`} value={fmtMoney(bill.electricity_charge)} />
-            {Number(bill.extra_occupant_days ?? 0) > 0 && (
-              <Row icon={Users} title="Extra Occupant" sub={`${bill.extra_occupant_days} days × ${fmtMoney(bill.extra_occupant_rate)}/day`} value={fmtMoney(bill.extra_occupant_charge)} />
-            )}
+          <div className="space-y-3">            {billLines?.length ? billLines.map((line: any) => (
+              <div key={line.id} className="card p-4 flex items-start justify-between gap-4">
+                <div><p className="font-medium text-slate-900">{line.label}</p><p className="text-xs text-slate-500">{line.item_type === "credit" ? "Credit" : "Charge"}{line.adjustment_note ? ` · ${line.adjustment_note}` : ""}</p></div>
+                <p className={`font-bold tabular-nums ${line.item_type === "credit" ? "text-emerald-700" : "text-slate-900"}`}>{line.item_type === "credit" ? "− " : ""}{fmtMoney(line.amount)}</p>
+              </div>
+            )) : <>
+              <Row icon={Home} title="Room Rent" sub={`Room ${room?.room_number ?? "—"}`} value={fmtMoney(bill.room_rent)} />
+              <Row icon={Zap} title="Electricity" sub={`${Number(bill.kwh_consumed ?? 0)} kWh`} value={fmtMoney(bill.electricity_charge)} />
+              {Number(bill.extra_occupant_days ?? 0) > 0 && <Row icon={Users} title="Extra Occupant" sub={`${bill.extra_occupant_days} days`} value={fmtMoney(bill.extra_occupant_charge)} />}
+            </>}
+            {Number((bill as any).credit_balance ?? 0) > 0 && <div className="card p-4 flex justify-between text-emerald-800"><span>Credit carried to next bill</span><strong>{fmtMoney((bill as any).credit_balance)}</strong></div>}
+            {(bill as any).electricity_invoice_url && <a className="text-sm text-blue-700 underline" href={(bill as any).electricity_invoice_url} target="_blank" rel="noreferrer">View building electricity bill</a>}
+            {(bill as any).meter_photo_url && <a className="text-sm text-blue-700 underline" href={(bill as any).meter_photo_url} target="_blank" rel="noreferrer">View this room’s submeter photo</a>}
             {bill.notes && (
               <div className="card p-4">
                 <p className="text-xs uppercase text-slate-400 font-semibold mb-1">Notes</p>

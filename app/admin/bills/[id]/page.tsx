@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ChevronLeft, Home, Zap, Users, FileText, CreditCard, Check } from "lucide-react";
 import { createAdminSupabaseClient } from "@/lib/supabase.admin";
 import BillStatusButton from "./BillStatusButton";
+import AdjustmentForm from "./AdjustmentForm";
 
 const fmt = (d?: string | null) =>
   d ? new Date(d).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" }) : "—";
@@ -26,13 +27,15 @@ export default async function BillDetailPage({
     .select(`
       id, billing_period_start, billing_period_end, status, notes,
       room_rent, extra_occupant_days, extra_occupant_rate, extra_occupant_charge,
-      kwh_consumed, kwh_rate, electricity_charge, total_amount,
+      kwh_consumed, kwh_rate, electricity_charge, total_amount, electricity_invoice_url, meter_photo_url, credit_balance,
       users ( id, full_name, email ),
       rooms ( id, room_number, monthly_rent )
     `)
     .eq("id", id)
     .single();
   if (error || !bill) notFound();
+
+  const { data: billLines } = await supabase.from("bill_line_items").select("id, label, amount, item_type, adjustment_note").eq("bill_id", id).order("sort_order");
 
   const { data: payments } = await supabase
     .from("payments")
@@ -90,12 +93,14 @@ export default async function BillDetailPage({
         {/* Breakdown */}
         <div className="mb-6">
           <h3 className="text-title-md mb-4">Breakdown</h3>
-          <div className="space-y-3">
-            <Row icon={Home}  title="Room Rent" sub={`Room ${room?.room_number ?? "—"}`} value={fmtMoney(bill.room_rent)} />
-            <Row icon={Zap}   title="Electricity" sub={`${bill.kwh_consumed} kWh × ${fmtMoney(bill.kwh_rate)}/kWh`} value={fmtMoney(bill.electricity_charge)} />
-            {Number(bill.extra_occupant_days) > 0 && (
-              <Row icon={Users} title="Extra Occupant" sub={`${bill.extra_occupant_days} days × ${fmtMoney(bill.extra_occupant_rate)}/day`} value={fmtMoney(bill.extra_occupant_charge)} />
-            )}
+          <div className="space-y-3">            {billLines?.length ? billLines.map((line: any) => <div key={line.id} className="card p-4 flex justify-between gap-4"><div><p className="font-medium">{line.label}</p><p className="text-xs text-slate-500">{line.item_type === "credit" ? "Credit" : "Charge"}{line.adjustment_note ? ` · ${line.adjustment_note}` : ""}</p></div><strong className={line.item_type === "credit" ? "text-emerald-700" : ""}>{line.item_type === "credit" ? "− " : ""}{fmtMoney(line.amount)}</strong></div>) : <>
+              <Row icon={Home} title="Room Rent" sub={`Room ${room?.room_number ?? "—"}`} value={fmtMoney(bill.room_rent)} />
+              <Row icon={Zap} title="Electricity" sub={`${bill.kwh_consumed} kWh`} value={fmtMoney(bill.electricity_charge)} />
+              {Number(bill.extra_occupant_days) > 0 && <Row icon={Users} title="Extra Occupant" sub={`${bill.extra_occupant_days} days`} value={fmtMoney(bill.extra_occupant_charge)} />}
+            </>}
+            {Number((bill as any).credit_balance ?? 0) > 0 && <div className="card p-4 flex justify-between text-emerald-800"><span>Credit carried forward</span><strong>{fmtMoney((bill as any).credit_balance)}</strong></div>}
+            {(bill as any).electricity_invoice_url && <a className="text-sm text-blue-700 underline" href={(bill as any).electricity_invoice_url} target="_blank" rel="noreferrer">View electricity bill evidence</a>}
+            {(bill as any).meter_photo_url && <a className="text-sm text-blue-700 underline" href={(bill as any).meter_photo_url} target="_blank" rel="noreferrer">View submeter photo</a>}
             {bill.notes && (
               <div className="card p-4">
                 <p className="text-xs uppercase text-slate-400 font-semibold mb-1">Notes</p>
@@ -108,6 +113,8 @@ export default async function BillDetailPage({
             </div>
           </div>
         </div>
+
+        <div className="mb-6"><AdjustmentForm billId={bill.id} /></div>
 
         {/* Payments against this bill */}
         <div>

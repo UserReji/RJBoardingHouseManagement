@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   LayoutDashboard, DoorOpen, Users, FileText,
-  CreditCard, AlertCircle, Settings, LogOut, Home,
+  CreditCard, AlertCircle, Settings, LogOut, Home, Droplets,
 } from "lucide-react";
 import SidebarDrawer, { type NavItem } from "@/lib/components/SidebarDrawer";
 
@@ -13,6 +13,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/admin/rooms",     label: "Rooms",       icon: DoorOpen },
   { href: "/admin/tenants",   label: "Tenants",     icon: Users },
   { href: "/admin/bills",     label: "Bills",       icon: FileText },
+  { href: "/admin/billing-history", label: "Billing history", icon: Droplets },
   { href: "/admin/payments",  label: "Payments",    icon: CreditCard },
   { href: "/admin/concerns",  label: "Concerns",    icon: AlertCircle },
   { href: "/admin/settings",  label: "Settings",    icon: Settings },

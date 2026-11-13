@@ -10,7 +10,7 @@ export async function POST(
   const supabase = await createAdminSupabaseClient();
   const { error } = await supabase
     .from("tenant_bills")
-    .update({ status: "unpaid" })
+    .update({ status: "unpaid", amount_paid: 0, paid_at: null })
     .eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true });

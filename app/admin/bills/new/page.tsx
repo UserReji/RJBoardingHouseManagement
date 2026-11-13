@@ -5,44 +5,27 @@ import CreateBillForm from "./CreateBillForm";
 
 export default async function CreateBillPage() {
   const supabase = await createAdminSupabaseClient();
-
-  const [tenantsRes, roomsRes, readingsRes, settingsRes] = await Promise.all([
-    supabase
-      .from("users")
-      .select("id, full_name, email, room_id, rooms(monthly_rent, room_number)")
-      .eq("role", "tenant")
-      .eq("registration_status", "approved")
-      .order("full_name"),
-    supabase.from("rooms").select("id, room_number, monthly_rent").order("room_number"),
-    supabase.from("meter_readings").select("id, room_id, reading_value, reading_date").order("reading_date", { ascending: false }),
-    supabase.from("settings").select("kwh_rate").eq("id", 1).single(),
+  const [{ data: rooms }, { data: tenants }, { data: readings }] = await Promise.all([
+    supabase.from("rooms").select("id, room_number, monthly_rent, occupant_count").order("room_number"),
+    supabase.from("users").select("id, full_name, room_id, billing_credit").eq("role", "tenant").eq("registration_status", "approved").not("room_id", "is", null),
+    supabase.from("meter_readings").select("room_id, reading_value, reading_date").order("reading_date", { ascending: false }),
   ]);
-
-  const tenants = (tenantsRes.data ?? []).map((t: any) => ({
-    id: t.id,
-    full_name: t.full_name,
-    email: t.email,
-    room_id: t.room_id,
-    monthly_rent: Array.isArray(t.rooms) ? t.rooms[0]?.monthly_rent : t.rooms?.monthly_rent,
-    room_number: Array.isArray(t.rooms) ? t.rooms[0]?.room_number : t.rooms?.room_number,
+  const tenantByRoom = new Map((tenants ?? []).map((tenant: any) => [tenant.room_id, tenant]));
+  const latestReading = new Map<string, any>();
+  for (const reading of readings ?? []) if (!latestReading.has(reading.room_id)) latestReading.set(reading.room_id, reading);
+  const billableRooms = (rooms ?? []).filter((room: any) => tenantByRoom.has(room.id)).map((room: any) => ({
+    ...room,
+    tenant: tenantByRoom.get(room.id),
+    previous_kwh: Number(latestReading.get(room.id)?.reading_value ?? 0),
   }));
-
   return (
     <div className="page md:p-6">
       <div className="page-content md:max-w-full md:p-0">
         <div className="flex items-center gap-3 mb-6">
-          <Link href="/admin/bills" className="btn btn-ghost btn-sm">
-            <ChevronLeft className="w-5 h-5" />
-          </Link>
-          <h1 className="text-title-md">Create New Bill</h1>
+          <Link href="/admin/bills" className="btn btn-ghost btn-sm"><ChevronLeft className="w-5 h-5" /></Link>
+          <div><p className="text-xs font-bold uppercase tracking-widest text-blue-600">Monthly billing</p><h1 className="text-title-md">Create room bills</h1></div>
         </div>
-
-        <CreateBillForm
-          tenants={tenants}
-          rooms={roomsRes.data ?? []}
-          allReadings={readingsRes.data ?? []}
-          defaultKwhRate={Number(settingsRes.data?.kwh_rate ?? 2)}
-        />
+        <CreateBillForm rooms={billableRooms} />
       </div>
     </div>
   );

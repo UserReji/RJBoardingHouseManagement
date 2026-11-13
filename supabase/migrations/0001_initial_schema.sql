@@ -1,8 +1,7 @@
 -- ============================================================================
--- RJ BoardHouse — initial schema migration
+-- RJ BoardHouse — complete application schema
 -- Run this in: Supabase Dashboard → SQL Editor → New query
--- Paste everything below, click "Run". Re-running is safe (uses IF NOT EXISTS
--- where possible and OR REPLACE / DROP+CREATE for policies).
+-- Paste this entire file into Supabase SQL Editor and click Run once.
 -- ============================================================================
 
 -- Enable required extensions -------------------------------------------------
@@ -371,7 +370,7 @@ create policy "public_assets_insert" on storage.objects for insert with check (b
 create policy "public_assets_update" on storage.objects for update using (bucket_id = 'public-assets' and auth.role() = 'authenticated');
 
 -- ============================================================================
--- 18. Auto-update updated_at columns
+-- 18. Auto-update updated_at columns and utility billing schema
 -- ============================================================================
 create or replace function public.tg_set_updated_at()
 returns trigger language plpgsql as $$
@@ -397,10 +396,85 @@ create trigger set_updated_at_concerns  before update on public.concerns
 create trigger set_updated_at_settings  before update on public.settings
   for each row execute function public.tg_set_updated_at();
 
+-- Monthly utilities billing batches and itemized bill snapshots.
+alter table public.rooms add column if not exists occupant_count integer not null default 1 check (occupant_count >= 0);
+alter table public.tenant_bills add column if not exists billing_batch_id uuid;
+alter table public.tenant_bills add column if not exists water_charge numeric(10,2) not null default 0;
+alter table public.tenant_bills add column if not exists water_rate_per_person numeric(10,2) not null default 0;
+alter table public.tenant_bills add column if not exists occupant_count integer not null default 1;
+alter table public.tenant_bills add column if not exists published_at timestamptz;
+alter table public.tenant_bills add column if not exists amount_paid numeric(10,2) not null default 0;
+
+create table if not exists public.billing_batches (
+  id uuid primary key default gen_random_uuid(),
+  billing_period_start date not null,
+  billing_period_end date not null,
+  due_date date,
+  status text not null default 'draft' check (status in ('draft', 'published')),
+  electricity_total numeric(10,2) not null default 0,
+  electricity_invoice_url text,
+  total_kwh numeric(10,2) not null default 0,
+  water_utility_amount numeric(10,2) not null default 0,
+  water_utility_paid_amount numeric(10,2) not null default 0,
+  water_paid_at date,
+  water_rate_per_person numeric(10,2) not null default 20 check (water_rate_per_person between 20 and 200 and mod(water_rate_per_person, 20) = 0),
+  water_invoice_url text,
+  notes text,
+  created_at timestamptz not null default now(),
+  published_at timestamptz
+);
+
+alter table public.tenant_bills drop constraint if exists tenant_bills_billing_batch_id_fkey;
+alter table public.tenant_bills add constraint tenant_bills_billing_batch_id_fkey foreign key (billing_batch_id) references public.billing_batches(id) on delete set null;
+
+create table if not exists public.bill_line_items (
+  id uuid primary key default gen_random_uuid(),
+  bill_id uuid not null references public.tenant_bills(id) on delete cascade,
+  label text not null,
+  amount numeric(10,2) not null,
+  item_type text not null check (item_type in ('charge', 'credit')),
+  sort_order integer not null default 0,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.billing_batch_rooms (
+  id uuid primary key default gen_random_uuid(),
+  batch_id uuid not null references public.billing_batches(id) on delete cascade,
+  room_id uuid not null references public.rooms(id) on delete restrict,
+  occupant_count integer not null default 1 check (occupant_count >= 0),
+  previous_kwh numeric(10,2) not null default 0,
+  current_kwh numeric(10,2) not null default 0,
+  consumed_kwh numeric(10,2) not null default 0 check (consumed_kwh >= 0),
+  meter_photo_url text,
+  electricity_charge numeric(10,2) not null default 0,
+  water_charge numeric(10,2) not null default 0,
+  unique (batch_id, room_id)
+);
+
+create index if not exists idx_billing_batches_period on public.billing_batches(billing_period_start desc);
+create index if not exists idx_bills_batch on public.tenant_bills(billing_batch_id);
+create index if not exists idx_bill_line_items_bill on public.bill_line_items(bill_id, sort_order);
+create index if not exists idx_batch_rooms_batch on public.billing_batch_rooms(batch_id);
+
+alter table public.billing_batches enable row level security;
+alter table public.billing_batch_rooms enable row level security;
+alter table public.bill_line_items enable row level security;
+
+drop policy if exists "bill_line_items_own_read" on public.bill_line_items;
+create policy "bill_line_items_own_read" on public.bill_line_items for select to authenticated
+  using (exists (select 1 from public.tenant_bills b where b.id = bill_id and b.user_id = auth.uid()));
+alter table public.tenant_bills add column if not exists electricity_invoice_url text;
+alter table public.tenant_bills add column if not exists meter_photo_url text;
+alter table public.tenant_bills add column if not exists credit_balance numeric(10,2) not null default 0;
+alter table public.users add column if not exists billing_credit numeric(10,2) not null default 0;
+insert into storage.buckets (id, name, public) values ('owner-private', 'owner-private', false) on conflict (id) do nothing;
+alter table public.tenant_bills add column if not exists paid_at timestamptz;
+alter table public.bill_line_items add column if not exists adjustment_note text;
+update public.rooms set occupant_count = 2 where room_number = 1 and occupant_count = 1;
+
 -- ============================================================================
 -- Done. Verify with:
 --   select tablename from pg_tables where schemaname = 'public' order by 1;
--- You should see: bill_photos, concern_photos, concern_replies, concerns,
---   meter_readings, payments, room_photos, rooms, settings, tenant_bills,
---   tenant_contracts, users.
+-- You should see billing_batches, billing_batch_rooms, bill_line_items, and
+--   the original application tables listed above.
 -- ============================================================================

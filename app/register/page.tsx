@@ -18,6 +18,17 @@ const STEPS = [
   { id: 5, label: "Valid ID & Rules" },
 ];
 
+function Field({ id, label, error, children }: { id: string; label: string; error?: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <label htmlFor={id} className="label">{label}</label>
+      {children}
+      <p className="text-red-500 text-xs mt-1.5 font-medium min-h-[1.25rem]" aria-live="polite">
+        {error ?? " "}
+      </p>
+    </div>
+  );
+}
 export default function RegisterPage() {
   const router   = useRouter();
   const supabase = createSupabaseClient();
@@ -82,20 +93,6 @@ export default function RegisterPage() {
       setIsLoading(false);
     }
   };
-
-  const Field = ({
-    id, label, error, children,
-  }: { id: string; label: string; error?: string; children: React.ReactNode }) => (
-    <div>
-      <label htmlFor={id} className="label">{label}</label>
-      {children}
-      {/* Reserve space so the error message appearing doesn't reflow the form
-          and shove the active input out from under the user's caret. */}
-      <p className="text-red-500 text-xs mt-1.5 font-medium min-h-[1.25rem]" aria-live="polite">
-        {error ?? " "}
-      </p>
-    </div>
-  );
 
   return (
     <div className="min-h-dvh bg-slate-50 flex flex-col">

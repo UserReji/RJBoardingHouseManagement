@@ -1,8 +1,9 @@
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
-import { ChevronLeft, Home, Zap, Users, Check } from "lucide-react";
+import { ChevronLeft, Home, Zap, Users, Clock3 } from "lucide-react";
 import { createSupabaseServerClient } from "@/lib/supabase.server";
 import PayButton from "./PayButton";
+import CashPaymentButton from "./CashPaymentButton";
 
 const fmt = (d?: string | null) =>
   d ? new Date(d).toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" }) : "—";
@@ -26,7 +27,7 @@ export default async function BillDetailPage({
   const { data: bill, error } = await supabase
     .from("tenant_bills")
     .select(`
-      id, billing_period_start, billing_period_end, status, notes, paid_at,
+      id, billing_period_start, billing_period_end, status, notes, paid_at, amount_paid,
       room_rent, extra_occupant_days, extra_occupant_rate, extra_occupant_charge,
       kwh_consumed, kwh_rate, electricity_charge, total_amount, electricity_invoice_url, meter_photo_url, credit_balance,
       rooms ( id, room_number )
@@ -47,6 +48,11 @@ export default async function BillDetailPage({
   const gcashQrUrl = settings?.gcash_qr_url ?? null;
 
   const room = Array.isArray((bill as any).rooms) ? (bill as any).rooms[0] : (bill as any).rooms;
+  const { data: pendingPayments } = await supabase.from("payments")
+    .select("id, amount, method, created_at")
+    .eq("bill_id", id).eq("status", "pending_verification").order("created_at", { ascending: false }).limit(1);
+  const pendingPayment = pendingPayments?.[0] ?? null;
+  const remaining = Math.max(0, Number(bill.total_amount) - Number((bill as any).amount_paid ?? 0));
 
   return (
     <div className="page md:p-6">
@@ -58,18 +64,19 @@ export default async function BillDetailPage({
           <h1 className="text-title-md">Bill Details</h1>
         </div>
 
-        {/* Hero */}
-        <div className="card bg-gradient-to-br from-blue-600 to-blue-700 text-white p-6 mb-5">
-          <div className="flex items-start justify-between mb-2">
+        {/* High contrast amount card */}
+        <div className="card border border-blue-200 bg-blue-50/70 p-6 mb-5">
+          <div className="flex flex-wrap items-start justify-between gap-3 mb-2">
             <div>
-              <p className="text-blue-100 text-sm">Total Amount</p>
-              <h2 className="text-4xl font-bold mt-1">{fmtMoney(bill.total_amount)}</h2>
+              <p className="text-slate-600 text-sm font-medium">Bill total</p>
+              <h2 className="text-4xl font-bold tracking-tight tabular-nums text-slate-950 mt-1">{fmtMoney(bill.total_amount)}</h2>
+              {Number((bill as any).amount_paid ?? 0) > 0 && bill.status !== "paid" && <p className="mt-2 text-sm text-slate-600">Balance due: <strong className="text-slate-900 tabular-nums">{fmtMoney(remaining)}</strong></p>}
             </div>
             <span className={`badge ${STATUS_BADGE[bill.status as string]}`}>
               {STATUS_LABEL[bill.status as string] ?? bill.status}
             </span>
           </div>
-          <p className="text-blue-100 text-sm">
+          <p className="text-slate-600 text-sm">
             {fmt(bill.billing_period_start)} to {fmt(bill.billing_period_end)}{bill.status === "paid" && (bill as any).paid_at ? ` · Paid ${fmt((bill as any).paid_at)}` : ""}
           </p>
         </div>
@@ -98,31 +105,33 @@ export default async function BillDetailPage({
             )}
             <div className="card p-4 border-l-4 border-l-blue-600 bg-blue-50 flex items-start justify-between">
               <p className="font-bold text-slate-900">Total</p>
-              <p className="text-xl font-bold text-blue-600">{fmtMoney(bill.total_amount)}</p>
+              <p className="text-xl font-bold text-slate-950 tabular-nums">{fmtMoney(bill.total_amount)}</p>
             </div>
           </div>
         </div>
 
-        {/* Payment options */}
-        {bill.status !== "paid" ? (
-          <div className="mb-6">
-            <h3 className="text-title-md mb-4">Payment Options</h3>
-            <div className="space-y-3">
-              <PayButton billId={bill.id} gcashQrUrl={gcashQrUrl} />
-              <div className="card p-4 bg-slate-50 flex items-center justify-between">
-                <div>
-                  <p className="font-medium text-slate-900">Cash Payment</p>
-                  <p className="text-sm text-slate-500">Pay directly at the office</p>
-                </div>
-                <Check className="w-5 h-5 text-emerald-500" />
-              </div>
+        {/* Payment options and admin confirmation state */}
+        {bill.status === "paid" ? (
+          <div className="card p-6 bg-emerald-50 border-emerald-200 text-center">
+            <p className="font-bold text-emerald-800">This bill is fully paid.</p>
+          </div>
+        ) : pendingPayment ? (
+          <div className="card p-5 border border-amber-200 bg-amber-50 flex items-start gap-3">
+            <Clock3 className="w-5 h-5 text-amber-700 mt-0.5 flex-shrink-0" />
+            <div><p className="font-semibold text-amber-950">Payment submitted — awaiting admin confirmation</p>
+              <p className="text-sm text-amber-900 mt-1">{pendingPayment.method === "cash" ? "Cash" : "GCash"} · {fmtMoney(pendingPayment.amount)} · Submitted {fmt(pendingPayment.created_at)}</p>
+              <p className="text-sm text-amber-900 mt-1">Your bill will be updated after the admin reviews your payment.</p>
             </div>
           </div>
-        ) : (
-          <div className="card p-6 bg-emerald-50 border-emerald-200 text-center">
-            <p className="font-bold text-emerald-700">This bill is fully paid.</p>
+        ) : bill.status !== "paid" ? (
+          <div className="mb-6">
+            <div className="flex items-end justify-between gap-3 mb-4"><h3 className="text-title-md">Payment Options</h3><p className="text-sm text-slate-600">Due <strong className="text-slate-950 tabular-nums">{fmtMoney(remaining)}</strong></p></div>
+            <div className="space-y-3">
+              <PayButton billId={bill.id} amountDue={remaining} gcashQrUrl={gcashQrUrl} />
+              <CashPaymentButton billId={bill.id} amountDue={remaining} />
+            </div>
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   );

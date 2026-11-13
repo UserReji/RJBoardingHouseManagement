@@ -6,7 +6,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const status = (await req.json().catch(() => ({})))?.status as string | undefined;
   if (status !== "verified" && status !== "rejected") return NextResponse.json({ error: "Invalid status" }, { status: 400 });
   const supabase = await createAdminSupabaseClient();
-  const { data: payment, error } = await supabase.from("payments").update({ status, verified_at: status === "verified" ? new Date().toISOString() : null }).eq("id", id).select("bill_id").single();
+  const reviewedAt = new Date().toISOString();
+  const { data: payment, error } = await supabase.from("payments").update({ status, verified_at: status === "verified" ? reviewedAt : null, paid_at: status === "verified" ? reviewedAt : null }).eq("id", id).select("bill_id").single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   if (payment?.bill_id) {
     const [{ data: verified }, { data: bill }] = await Promise.all([

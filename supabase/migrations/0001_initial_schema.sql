@@ -560,8 +560,11 @@ create policy "payments_own_r" on public.payments
 create policy "payments_own_w" on public.payments
   for insert with check (
     auth.uid() = user_id
+    and status = 'pending_verification'
+    and amount > 0
+    and (method = 'cash' or (method = 'gcash' and screenshot_url is not null))
     and exists (select 1 from public.tenant_bills b
-                where b.id = payments.bill_id and b.user_id = auth.uid())
+                where b.id = payments.bill_id and b.user_id = auth.uid() and b.status <> 'paid')
   );
 create policy "concerns_own_rw" on public.concerns
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);

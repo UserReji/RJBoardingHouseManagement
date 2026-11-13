@@ -26,8 +26,11 @@ create table if not exists public.users (
   valid_id_type            text,
   valid_id_number          text,
   room_id                  uuid,                              -- assigned room (set after approval)
-  created_at               timestamptz not null default now()
+  created_at               timestamptz not null default now(),
+  updated_at               timestamptz not null default now()
 );
+
+alter table public.users add column if not exists updated_at timestamptz not null default now();
 
 -- ============================================================================
 -- 2. rooms

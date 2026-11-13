@@ -7,7 +7,7 @@ import toast from "react-hot-toast";
 
 type Line = { label: string; amount: number; type: "charge" | "credit"; manual?: boolean };
 type Room = { id: string; room_number: number; monthly_rent: number; occupant_count: number; previous_kwh: number; tenant: { id: string; full_name: string; billing_credit: number } };
-type RoomDraft = { current: string; occupants: number; meterUrl: string; lines: Line[] };
+type RoomDraft = { previous: string; current: string; occupants: number; meterUrl: string; lines: Line[] };
 const money = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 const fmt = (n: number) => `₱${Number(n || 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const today = () => new Date().toLocaleDateString("en-CA");
@@ -31,7 +31,7 @@ export default function CreateBillForm({ rooms }: { rooms: Room[] }) {
   const [reviewing, setReviewing] = useState(false);
   const [uploads, setUploads] = useState<Record<string, boolean>>({});
   const [drafts, setDrafts] = useState<Record<string, RoomDraft>>(() => Object.fromEntries(rooms.map((room) => [room.id, {
-    current: String(room.previous_kwh), occupants: Math.max(1, Number(room.occupant_count ?? 1)), meterUrl: "",
+    previous: String(room.previous_kwh), current: String(room.previous_kwh), occupants: Math.max(1, Number(room.occupant_count ?? 1)), meterUrl: "",
     lines: [
       { label: "Room rent", amount: Number(room.monthly_rent), type: "charge" },
       { label: "Electricity", amount: 0, type: "charge" },
@@ -39,7 +39,7 @@ export default function CreateBillForm({ rooms }: { rooms: Room[] }) {
     ],
   }])));
 
-  const consumption = (room: Room) => Math.max(0, Number(drafts[room.id]?.current || 0) - Number(room.previous_kwh || 0));
+  const consumption = (room: Room) => Math.max(0, Number(drafts[room.id]?.current || 0) - Number(drafts[room.id]?.previous || 0));
   const totalKwh = useMemo(() => rooms.reduce((sum, room) => sum + consumption(room), 0), [rooms, drafts]);
   const electricityMap = useMemo(() => {
     const total = Number(electricityTotal || 0);
@@ -82,7 +82,7 @@ export default function CreateBillForm({ rooms }: { rooms: Room[] }) {
     if (!periodStart || !periodEnd || periodEnd < periodStart || !electricityTotal || !waterAmount) { toast.error("Complete the billing dates and both utility bill amounts."); return; }
     if (Number(electricityTotal) > 0 && totalKwh <= 0) { toast.error("Enter room electricity use before allocating the shared bill."); return; }
     if (!electricityUrl || !waterInvoicePath || rooms.some((room) => !drafts[room.id].meterUrl)) { toast.error("Attach the electricity bill, private water invoice, and each room submeter photo first."); return; }
-    if (rooms.some((room) => Number(drafts[room.id].current) < Number(room.previous_kwh))) { toast.error("A current meter reading is lower than its previous reading."); return; }
+    if (rooms.some((room) => drafts[room.id].previous === "" || drafts[room.id].current === "" || !Number.isFinite(Number(drafts[room.id].previous)) || !Number.isFinite(Number(drafts[room.id].current)) || Number(drafts[room.id].current) < Number(drafts[room.id].previous))) { toast.error("Enter valid previous and current readings. Current readings must be at least as high as previous readings."); return; }
     setBusy(true);
     try {
       const response = await fetch("/api/admin/billing-batches", {
@@ -93,7 +93,7 @@ export default function CreateBillForm({ rooms }: { rooms: Room[] }) {
           water_utility_amount: Number(waterAmount), water_utility_paid_amount: Number(waterPaid || 0), water_paid_at: waterPaidAt || null,
           water_rate_per_person: waterRate, water_invoice_path: waterInvoicePath || null, notes: notes || null,
           rooms: rooms.map((room) => ({
-            room_id: room.id, previous_kwh: Number(room.previous_kwh), current_kwh: Number(drafts[room.id].current),
+            room_id: room.id, previous_kwh: Number(drafts[room.id].previous), current_kwh: Number(drafts[room.id].current),
             occupant_count: drafts[room.id].occupants, meter_photo_url: drafts[room.id].meterUrl || null,
             lines: drafts[room.id].lines.map((line) => ({ ...line, amount: lineAmount(room.id, line) })),
           })),
@@ -120,7 +120,7 @@ export default function CreateBillForm({ rooms }: { rooms: Room[] }) {
     </section>
 
     <section className="card p-5 md:p-6 space-y-4">
-      <div className="flex items-center gap-2"><Zap className="w-5 h-5 text-amber-500"/><div><h2 className="font-bold text-slate-900">Electricity</h2><p className="text-sm text-slate-500">The building bill is divided by each occupied room’s submeter use.</p></div></div>
+      <div className="flex items-center gap-2"><Zap className="w-5 h-5 text-amber-500"/><div><h2 className="font-bold text-slate-900">Electricity</h2><p className="text-sm text-slate-500">Enter the previous and current readings for each room. Usage is calculated automatically, then the building bill is divided by each room’s kWh share.</p></div></div>
       <div className="grid md:grid-cols-2 gap-4">
         <label><span className="label">Total electricity bill (₱)</span><input type="number" min="0" step="0.01" value={electricityTotal} onChange={(e) => setElectricityTotal(e.target.value)} className="input" placeholder="0.00" /></label>
         <label><span className="label">Electricity bill image (visible to tenants)</span><input type="file" accept="image/*,application/pdf" onChange={(e) => handleElectricityUpload(e.target.files?.[0])} className="input" />{electricityUrl && <span className="text-xs text-emerald-700">Bill attached</span>}{uploads.electricity && <span className="text-xs text-slate-500">Uploading…</span>}</label>
@@ -148,8 +148,8 @@ export default function CreateBillForm({ rooms }: { rooms: Room[] }) {
         return <article key={room.id} className="card p-4 md:p-5">
           <div className="flex flex-wrap items-start justify-between gap-3 mb-4"><div><h3 className="font-bold text-slate-900">Room {room.room_number}</h3><p className="text-sm text-slate-500">{room.tenant.full_name}</p></div><div className="text-right"><p className="text-xs text-slate-500">Preview amount due</p><p className="font-extrabold text-xl tabular-nums">{fmt(Math.max(0, net - carry))}</p></div></div>
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            <label><span className="label">Previous kWh</span><input readOnly value={room.previous_kwh} className="input bg-slate-50" /></label>
-            <label><span className="label">Current kWh</span><input type="number" min={room.previous_kwh} step="0.01" value={draft.current} onChange={(e) => updateRoom(room.id, { current: e.target.value })} className="input" /></label>
+            <label><span className="label">Previous kWh</span><input type="number" min="0" step="0.01" value={draft.previous} onChange={(e) => updateRoom(room.id, { previous: e.target.value })} className="input" /></label>
+            <label><span className="label">Current kWh</span><input type="number" min={draft.previous || 0} step="0.01" value={draft.current} onChange={(e) => updateRoom(room.id, { current: e.target.value })} className="input" /></label>
             <label><span className="label">Room kWh used</span><input readOnly value={kwh.toLocaleString()} className="input bg-slate-50" /></label>
             <label><span className="label flex items-center gap-1"><Users className="w-3.5 h-3.5"/> Occupants</span><input type="number" min="1" step="1" value={draft.occupants} onChange={(e) => updateRoom(room.id, { occupants: Math.max(1, Number(e.target.value || 1)) })} className="input" /></label>
           </div>

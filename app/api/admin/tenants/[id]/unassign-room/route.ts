@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAdminSupabaseClient } from "@/lib/supabase.admin";
 
-/** POST /api/admin/tenants/:id/unassign-room — move out and free the room safely. */
+/** POST /api/admin/tenants/:id/unassign-room - move out and free the room safely. */
 export async function POST(
   _req: Request,
   { params }: { params: Promise<{ id: string }> },

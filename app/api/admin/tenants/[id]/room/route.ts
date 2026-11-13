@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAdminSupabaseClient } from "@/lib/supabase.admin";
 
-/** POST /api/admin/tenants/:id/room — assign, move, or move out a confirmed tenant. */
+/** POST /api/admin/tenants/:id/room - assign, move, or move out a confirmed tenant. */
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> },

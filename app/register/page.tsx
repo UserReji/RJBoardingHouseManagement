@@ -83,6 +83,10 @@ export default function RegisterPage() {
       });
       if (authError) { toast.error(authError.message || "Registration failed"); return; }
       if (!authData.user) { toast.error("We could not create your account. Please try again."); return; }
+      if (authData.user.identities?.length === 0) {
+        toast.error("An account with this email already exists. Sign in or reset your password.");
+        return;
+      }
 
       toast.success("Registration submitted! Awaiting admin approval.");
       router.push("/login");

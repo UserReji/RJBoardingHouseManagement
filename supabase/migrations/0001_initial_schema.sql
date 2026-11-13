@@ -256,6 +256,32 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
+-- Backfill Auth accounts created before this profile trigger was installed.
+-- This is safe to rerun: existing public.users profiles are left unchanged.
+insert into public.users (
+  id, email, role, registration_status, full_name,
+  birthday, sex, permanent_address, contact_number,
+  emergency_contact_name, emergency_contact_number,
+  valid_id_type, valid_id_number
+)
+select
+  a.id,
+  a.email,
+  'tenant',
+  'pending',
+  coalesce(nullif(a.raw_user_meta_data->>'full_name', ''), split_part(a.email, '@', 1)),
+  nullif(a.raw_user_meta_data->>'birthday', '')::date,
+  nullif(a.raw_user_meta_data->>'sex', ''),
+  nullif(a.raw_user_meta_data->>'permanent_address', ''),
+  nullif(a.raw_user_meta_data->>'contact_number', ''),
+  nullif(a.raw_user_meta_data->>'emergency_contact_name', ''),
+  nullif(a.raw_user_meta_data->>'emergency_contact_number', ''),
+  nullif(a.raw_user_meta_data->>'valid_id_type', ''),
+  nullif(a.raw_user_meta_data->>'valid_id_number', '')
+from auth.users a
+where a.email is not null
+  and not exists (select 1 from public.users u where u.id = a.id)
+on conflict (id) do nothing;
 
 -- ============================================================================
 -- 15. Helpful indexes

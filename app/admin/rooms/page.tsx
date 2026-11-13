@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ChevronRight, DoorOpen } from "lucide-react";
 import { createAdminSupabaseClient } from "@/lib/supabase.admin";
+import CreateRoomForm from "./CreateRoomForm";
 
 export default async function AdminRoomsPage() {
   const supabase = await createAdminSupabaseClient();
@@ -8,15 +9,17 @@ export default async function AdminRoomsPage() {
     .from("rooms")
     .select(`
       id, room_number, monthly_rent, status,
-      users ( full_name, email_confirmed_at )
+      users ( full_name, email_confirmed_at, account_status )
     `)
     .not("users.email_confirmed_at", "is", null)
     .order("room_number");
 
-  const rooms = (data ?? []).map((r: any) => ({
-    ...r,
-    current_tenant: r.users?.full_name ?? undefined,
-  }));
+  const rooms = (data ?? []).map((r: any) => {
+    const assigned = (Array.isArray(r.users) ? r.users : r.users ? [r.users] : [])
+      .filter((tenant: any) => tenant.email_confirmed_at && tenant.account_status === "active")
+      .map((tenant: any) => tenant.full_name);
+    return { ...r, current_tenant: assigned.join(", ") || undefined };
+  });
   const occupied = rooms.filter((r) => r.status === "occupied").length;
   const vacant   = rooms.length - occupied;
 
@@ -27,6 +30,8 @@ export default async function AdminRoomsPage() {
         <h1 className="text-display-md">Rooms</h1>
         <p className="text-slate-500 text-sm mt-1">{occupied} occupied · {vacant} vacant · {rooms.length} total</p>
       </div>
+
+      <CreateRoomForm />
 
       {rooms.length === 0 ? (
         <div className="card p-12 text-center">

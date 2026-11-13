@@ -4,6 +4,8 @@ import { ChevronLeft, Home, Zap, Users, FileText, CreditCard, Check } from "luci
 import { createAdminSupabaseClient } from "@/lib/supabase.admin";
 import BillStatusButton from "./BillStatusButton";
 import AdjustmentForm from "./AdjustmentForm";
+import DeleteBillButton from "./DeleteBillButton";
+import RecordCashPaymentForm from "./RecordCashPaymentForm";
 
 const fmt = (d?: string | null) =>
   d ? new Date(d).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" }) : "—";
@@ -25,7 +27,7 @@ export default async function BillDetailPage({
   const { data: bill, error } = await supabase
     .from("tenant_bills")
     .select(`
-      id, billing_period_start, billing_period_end, status, notes,
+      id, billing_period_start, billing_period_end, status, notes, amount_paid, billing_batch_id,
       room_rent, extra_occupant_days, extra_occupant_rate, extra_occupant_charge,
       kwh_consumed, kwh_rate, electricity_charge, total_amount, electricity_invoice_url, meter_photo_url, credit_balance,
       users!inner ( id, full_name, email, email_confirmed_at ),
@@ -91,6 +93,10 @@ export default async function BillDetailPage({
           </div>
         )}
 
+        {bill.status === "unpaid" && Number(bill.amount_paid ?? 0) === 0 && !bill.billing_batch_id && payments?.length === 0 && (
+          <div className="mb-5"><DeleteBillButton billId={bill.id} /></div>
+        )}
+
         {/* Breakdown */}
         <div className="mb-6">
           <h3 className="text-title-md mb-4">Breakdown</h3>
@@ -118,6 +124,7 @@ export default async function BillDetailPage({
         <div className="mb-6"><AdjustmentForm billId={bill.id} /></div>
 
         {/* Payments against this bill */}
+        <div className="mb-5"><RecordCashPaymentForm billId={bill.id} remaining={Math.max(0, Number(bill.total_amount) - Number(bill.amount_paid ?? 0))} /></div>
         <div>
           <h3 className="text-title-md mb-4">Payments</h3>
           {(!payments || payments.length === 0) ? (

@@ -3,12 +3,13 @@ import { ChevronRight, Users } from "lucide-react";
 import { createAdminSupabaseClient } from "@/lib/supabase.admin";
 import InlineApprove from "./InlineApprove";
 
-type StatusFilter = "all" | "pending" | "approved" | "rejected";
+type StatusFilter = "all" | "pending" | "approved" | "rejected" | "archived";
 
 const STATUS_BADGE: Record<string, string> = {
   approved: "badge-success",
   pending:  "badge-warning",
   rejected: "badge-danger",
+  archived: "badge-slate",
 };
 
 const FILTERS: { value: StatusFilter; label: string }[] = [
@@ -16,6 +17,7 @@ const FILTERS: { value: StatusFilter; label: string }[] = [
   { value: "approved", label: "Approved" },
   { value: "pending",  label: "Pending" },
   { value: "rejected", label: "Rejected" },
+  { value: "archived", label: "Archived" },
 ];
 
 export default async function AdminTenantsPage({
@@ -29,7 +31,7 @@ export default async function AdminTenantsPage({
   const [tenantsRes, roomsRes] = await Promise.all([
     supabase
       .from("users")
-      .select("id, full_name, email, registration_status, created_at, rooms(room_number)")
+      .select("id, full_name, email, registration_status, account_status, created_at, rooms(room_number)")
       .eq("role", "tenant")
       .not("email_confirmed_at", "is", null)
       .order("created_at", { ascending: false }),
@@ -48,9 +50,11 @@ export default async function AdminTenantsPage({
     .filter((r) => r.status === "vacant")
     .map((r) => ({ id: r.id, room_number: r.room_number }));
 
-  const filtered  = filter === "all" ? tenants : tenants.filter((t) => t.registration_status === filter);
-  const approved  = tenants.filter((t) => t.registration_status === "approved").length;
-  const pending   = tenants.filter((t) => t.registration_status === "pending").length;
+  const filtered = filter === "all" ? tenants : filter === "archived"
+    ? tenants.filter((t: any) => t.account_status === "archived")
+    : tenants.filter((t: any) => t.account_status === "active" && t.registration_status === filter);
+  const approved = tenants.filter((t: any) => t.account_status === "active" && t.registration_status === "approved").length;
+  const pending = tenants.filter((t: any) => t.account_status === "active" && t.registration_status === "pending").length;
 
   return (
     <div className="space-y-6">
@@ -97,8 +101,8 @@ export default async function AdminTenantsPage({
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-0.5 flex-wrap">
                     <p className="font-semibold text-slate-900 truncate">{t.full_name}</p>
-                    <span className={`badge ${STATUS_BADGE[t.registration_status]}`}>
-                      {t.registration_status}
+                    <span className={`badge ${STATUS_BADGE[t.account_status === "archived" ? "archived" : t.registration_status]}`}>
+                      {t.account_status === "archived" ? "Archived" : t.registration_status}
                     </span>
                     {t.room_number && <span className="badge badge-info">Room {t.room_number}</span>}
                   </div>
@@ -111,7 +115,7 @@ export default async function AdminTenantsPage({
                 </div>
                 <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-slate-700 flex-shrink-0" />
               </Link>
-              {t.registration_status === "pending" && (
+              {t.account_status === "active" && t.registration_status === "pending" && (
                 <InlineApprove tenantId={t.id} availableRooms={availableRooms} />
               )}
             </div>

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ChevronLeft, DoorOpen, User, Zap } from "lucide-react";
 import { createAdminSupabaseClient } from "@/lib/supabase.admin";
 import EditRoomForm from "./EditRoomForm";
+import DeleteRoomButton from "../DeleteRoomButton";
 
 const fmt = (d?: string | null) =>
   d ? new Date(d).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" }) : "—";
@@ -17,16 +18,15 @@ export default async function RoomDetailPage({
     .from("rooms")
     .select(`
       id, room_number, price, monthly_rent, status, description, created_at,
-      users ( id, full_name, email, contact_number, registration_status, email_confirmed_at )
+      users ( id, full_name, email, contact_number, registration_status, email_confirmed_at, account_status )
     `)
     .eq("id", id)
     .not("users.email_confirmed_at", "is", null)
     .single();
   if (error || !room) notFound();
 
-  const tenant = Array.isArray((room as any).users)
-    ? (room as any).users[0]
-    : (room as any).users;
+  const tenants = (Array.isArray((room as any).users) ? (room as any).users : (room as any).users ? [(room as any).users] : [])
+    .filter((tenant: any) => tenant.email_confirmed_at && tenant.account_status === "active");
 
   const { data: readings } = await supabase
     .from("meter_readings")
@@ -74,9 +74,11 @@ export default async function RoomDetailPage({
             <h2 className="font-bold text-slate-800 mb-4">Room details</h2>
             <EditRoomForm
               roomId={room.id}
+              initialRoomNumber={room.room_number}
               initialPrice={Number(room.monthly_rent ?? room.price)}
               initialDescription={room.description ?? ""}
             />
+            <div className="mt-4 pt-4 border-t border-slate-100"><DeleteRoomButton roomId={room.id} roomNumber={room.room_number} /></div>
           </div>
 
           {/* Current tenant */}
@@ -87,12 +89,14 @@ export default async function RoomDetailPage({
               </div>
               <h2 className="font-bold text-slate-800">Current tenant</h2>
             </div>
-            {tenant ? (
-              <Link href={`/admin/tenants/${tenant.id}`} className="block hover:bg-slate-50 -m-2 p-2 rounded-lg">
-                <p className="font-semibold text-slate-900">{tenant.full_name}</p>
-                <p className="text-sm text-slate-500">{tenant.email}</p>
-                {tenant.contact_number && <p className="text-xs text-slate-400 mt-1">📱 {tenant.contact_number}</p>}
-              </Link>
+            {tenants.length ? (
+              <div className="space-y-3">
+                {tenants.map((tenant: any) => <Link key={tenant.id} href={`/admin/tenants/${tenant.id}`} className="block hover:bg-slate-50 -m-2 p-2 rounded-lg">
+                  <p className="font-semibold text-slate-900">{tenant.full_name}</p>
+                  <p className="text-sm text-slate-500">{tenant.email}</p>
+                  {tenant.contact_number && <p className="text-xs text-slate-400 mt-1">{tenant.contact_number}</p>}
+                </Link>)}
+              </div>
             ) : (
               <p className="text-sm text-slate-500">No tenant assigned.</p>
             )}

@@ -1,6 +1,7 @@
 import { Check, X, CreditCard, ImageIcon } from "lucide-react";
 import { createAdminSupabaseClient } from "@/lib/supabase.admin";
 import VerifyRejectButtons from "./VerifyRejectButtons";
+import DeletePaymentButton from "./DeletePaymentButton";
 
 type StatusFilter = "all" | "pending_verification" | "verified" | "rejected";
 import Link from "next/link";
@@ -114,9 +115,8 @@ export default async function AdminPaymentsPage({
                 </a>
               )}
 
-              {p.status === "pending_verification" && (
-                <VerifyRejectButtons paymentId={p.id} />
-              )}
+              {p.status !== "rejected" && <VerifyRejectButtons paymentId={p.id} currentStatus={p.status} />}
+              {p.status === "pending_verification" && <DeletePaymentButton paymentId={p.id} />}
             </div>
           ))}
         </div>

@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Send, Check, Wrench } from "lucide-react";
+import { Send, Check, Wrench, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
 
 type Status = "open" | "in_progress" | "resolved";
@@ -30,6 +30,14 @@ export default function ConcernActions({
     startTransition(() => router.refresh());
   };
 
+  const remove = async () => {
+    if (!confirm("Delete this concern and its replies/photos? This cannot be undone.")) return;
+    const res = await fetch(`/api/admin/concerns/${concernId}`, { method: "DELETE" });
+    const result = await res.json().catch(() => ({}));
+    if (!res.ok) { toast.error(result.error ?? "Could not delete concern"); return; }
+    toast.success("Concern deleted"); router.push("/admin/concerns"); startTransition(() => router.refresh());
+  };
+
   const setStatus = async (status: Status) => {
     const res = await fetch(`/api/admin/concerns/${concernId}/status`, {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -42,6 +50,7 @@ export default function ConcernActions({
 
   return (
     <div className="space-y-4">
+      <div className="flex justify-end"><button onClick={remove} disabled={isPending} className="btn btn-danger btn-sm"><Trash2 className="w-4 h-4" /> Delete concern</button></div>
       {/* Status changer */}
       <div className="card p-4">
         <p className="text-xs uppercase tracking-wide text-slate-400 font-semibold mb-2">Status</p>

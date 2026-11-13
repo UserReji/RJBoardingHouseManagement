@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { createAdminSupabaseClient } from "@/lib/supabase.admin";
 import TenantActions from "./TenantActions";
+import TenantProfileEditor from "./TenantProfileEditor";
 
 function fmt(date?: string | null) {
   if (!date) return "—";
@@ -23,7 +24,7 @@ export default async function TenantDetailPage({
   const { data: tenant, error } = await supabase
     .from("users")
     .select(`
-      id, email, full_name, role, registration_status,
+      id, email, full_name, role, registration_status, account_status,
       birthday, sex, permanent_address, contact_number,
       emergency_contact_name, emergency_contact_number,
       valid_id_type, valid_id_number, created_at, room_id,
@@ -79,6 +80,7 @@ export default async function TenantDetailPage({
                 <TenantActions
                   tenantId={tenant.id}
                   currentStatus={tenant.registration_status as any}
+                  accountStatus={tenant.account_status as any}
                   currentRoomId={tenant.room_id}
                   availableRooms={availableRooms}
                 />
@@ -87,8 +89,16 @@ export default async function TenantDetailPage({
           </div>
         </div>
 
+        <TenantProfileEditor profile={{
+          id: tenant.id, email: tenant.email, full_name: tenant.full_name,
+          birthday: tenant.birthday, sex: tenant.sex, permanent_address: tenant.permanent_address,
+          contact_number: tenant.contact_number, emergency_contact_name: tenant.emergency_contact_name,
+          emergency_contact_number: tenant.emergency_contact_number, valid_id_type: tenant.valid_id_type,
+          valid_id_number: tenant.valid_id_number,
+        }} />
+
         {/* Two-column layout on desktop, stacked on mobile */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mt-5">
           {/* Personal */}
           <div className="card p-5">
             <div className="flex items-center gap-2.5 mb-4">
@@ -128,6 +138,7 @@ export default async function TenantDetailPage({
               </div>
               <h2 className="font-bold text-slate-800">Tenancy</h2>
             </div>
+            <Link href={`/admin/tenants/${tenant.id}/contract`} className="btn btn-secondary btn-sm mb-3">Manage contracts</Link>
             {room ? (
               <>
                 <Field label="Room"   value={`Room ${room.room_number}`} />

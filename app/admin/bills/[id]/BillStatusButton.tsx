@@ -14,8 +14,9 @@ export default function BillStatusButton({
 
   const onClick = async () => {
     const res = await fetch(`/api/admin/bills/${billId}/${action}`, { method: "POST" });
-    if (!res.ok) { toast.error("Failed to update"); return; }
-    toast.success("Updated");
+    const result = await res.json().catch(() => ({}));
+    if (!res.ok) { toast.error(result.error ?? "Failed to update"); return; }
+    toast.success(action === "mark-paid" ? "Cash payment recorded" : "Bill reopened");
     startTransition(() => router.refresh());
   };
 

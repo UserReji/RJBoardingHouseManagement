@@ -1,37 +1,21 @@
 import { NextResponse } from "next/server";
 import { createAdminSupabaseClient } from "@/lib/supabase.admin";
 
-/**
- * POST /api/admin/tenants/:id/unassign-room
- * Removes the tenant's room assignment, flips the room back to vacant,
- * keeps the tenant approved (you can reject separately if needed).
- */
+/** POST /api/admin/tenants/:id/unassign-room — move out and free the room safely. */
 export async function POST(
   _req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
   const supabase = await createAdminSupabaseClient();
-
-  const { data: tenant } = await supabase
-    .from("users")
-    .select("room_id")
-    .eq("id", id)
-    .single();
-  const roomId = tenant?.room_id;
-  if (!roomId) return NextResponse.json({ error: "No room to unassign" }, { status: 400 });
-
-  const { error: userErr } = await supabase
-    .from("users")
-    .update({ room_id: null })
-    .eq("id", id);
-  if (userErr) return NextResponse.json({ error: userErr.message }, { status: 500 });
-
-  const { error: roomErr } = await supabase
-    .from("rooms")
-    .update({ status: "vacant" })
-    .eq("id", roomId);
-  if (roomErr) return NextResponse.json({ error: roomErr.message }, { status: 500 });
-
+  const { error } = await supabase.rpc("admin_set_tenant_room", {
+    p_tenant_id: id,
+    p_room_id: null,
+    p_approve: false,
+  });
+  if (error) {
+    const status = error.code === "P0002" ? 404 : error.code === "42501" ? 403 : 400;
+    return NextResponse.json({ error: error.message }, { status });
+  }
   return NextResponse.json({ ok: true });
 }

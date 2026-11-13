@@ -28,12 +28,14 @@ create table if not exists public.users (
   valid_id_number          text,
   room_id                  uuid,                              -- assigned room (set after approval)
   email_confirmed_at       timestamptz,
+  account_status           text not null default 'active' check (account_status in ('active', 'archived')),
   created_at               timestamptz not null default now(),
   updated_at               timestamptz not null default now()
 );
 
 alter table public.users add column if not exists updated_at timestamptz not null default now();
 alter table public.users add column if not exists email_confirmed_at timestamptz;
+alter table public.users add column if not exists account_status text not null default 'active' check (account_status in ('active', 'archived'));
 
 -- Sync confirmation status for profiles created by the previous schema version.
 update public.users u
@@ -288,6 +290,176 @@ create trigger on_auth_user_created
   after insert or update on auth.users
   for each row execute function public.handle_new_user();
 
+-- Atomically assign, move, or unassign a tenant while keeping room status in sync.
+create or replace function public.admin_set_tenant_room(
+  p_tenant_id uuid,
+  p_room_id uuid,
+  p_approve boolean default false
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  previous_room_id uuid;
+  confirmed_at timestamptz;
+  current_account_status text;
+begin
+  select room_id, email_confirmed_at, account_status
+    into previous_room_id, confirmed_at, current_account_status
+    from public.users
+    where id = p_tenant_id and role = 'tenant'
+    for update;
+  if not found then
+    raise exception 'Tenant profile not found' using errcode = 'P0002';
+  end if;
+  if confirmed_at is null then
+    raise exception 'Tenant email must be confirmed before room assignment' using errcode = '42501';
+  end if;
+  if current_account_status = 'archived' then
+    raise exception 'Restore the tenant account before assigning a room' using errcode = '42501';
+  end if;
+
+  if p_room_id is not null and p_room_id is distinct from previous_room_id then
+    perform 1 from public.rooms where id = p_room_id for update;
+    if not found then
+      raise exception 'Room not found' using errcode = 'P0002';
+    end if;
+    if exists (select 1 from public.users where room_id = p_room_id and id <> p_tenant_id and email_confirmed_at is not null and account_status = 'active') then
+      raise exception 'Room is already assigned' using errcode = '23505';
+    end if;
+  end if;
+
+  update public.users
+    set room_id = p_room_id,
+        registration_status = case when p_approve then 'approved' else registration_status end
+    where id = p_tenant_id;
+
+  if previous_room_id is not null and previous_room_id is distinct from p_room_id then
+    update public.tenant_contracts
+      set contract_status = 'ended',
+          end_date = greatest(start_date, least(end_date, current_date))
+      where tenant_id = p_tenant_id
+        and room_id = previous_room_id
+        and contract_status = 'active';
+
+    update public.rooms
+      set status = case
+        when exists (select 1 from public.users where room_id = previous_room_id and email_confirmed_at is not null and account_status = 'active') then 'occupied'
+        else 'vacant'
+      end
+      where id = previous_room_id;
+  end if;
+
+  if p_room_id is not null then
+    update public.rooms set status = 'occupied' where id = p_room_id;
+  end if;
+end;
+$$;
+
+revoke all on function public.admin_set_tenant_room(uuid, uuid, boolean) from public, anon, authenticated;
+grant execute on function public.admin_set_tenant_room(uuid, uuid, boolean) to service_role;
+
+-- Create a new active contract for an approved tenant's current room.
+create or replace function public.admin_create_tenant_contract(
+  p_tenant_id uuid,
+  p_term_months integer,
+  p_start_date date,
+  p_end_date date,
+  p_monthly_rent numeric,
+  p_security_deposit_months numeric,
+  p_advance_payment_months numeric
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  current_room_id uuid;
+  confirmed_at timestamptz;
+  account_state text;
+  registration_state text;
+  contract_id uuid;
+begin
+  select room_id, email_confirmed_at, account_status, registration_status
+    into current_room_id, confirmed_at, account_state, registration_state
+    from public.users
+    where id = p_tenant_id and role = 'tenant'
+    for update;
+  if not found then raise exception 'Tenant profile not found' using errcode = 'P0002'; end if;
+  if confirmed_at is null then raise exception 'Tenant email must be confirmed first' using errcode = '42501'; end if;
+  if current_room_id is null then raise exception 'Assign a room before creating a contract' using errcode = '22023'; end if;
+  if account_state = 'archived' then raise exception 'Restore this account before creating a contract' using errcode = '42501'; end if;
+  if registration_state <> 'approved' then raise exception 'Approve the tenant before creating a contract' using errcode = '42501'; end if;
+  if p_term_months < 1 or p_start_date is null or p_end_date <= p_start_date or p_monthly_rent <= 0
+     or p_security_deposit_months < 0 or p_advance_payment_months < 0 then
+    raise exception 'Invalid contract details' using errcode = '22023';
+  end if;
+
+  update public.tenant_contracts
+    set contract_status = 'ended',
+        end_date = greatest(start_date, least(end_date, current_date))
+    where tenant_id = p_tenant_id and contract_status = 'active';
+
+  insert into public.tenant_contracts (
+    tenant_id, room_id, term_months, start_date, end_date, monthly_rent,
+    security_deposit_months, advance_payment_months, contract_status
+  ) values (
+    p_tenant_id, current_room_id, p_term_months, p_start_date, p_end_date, p_monthly_rent,
+    p_security_deposit_months, p_advance_payment_months, 'active'
+  ) returning id into contract_id;
+  return contract_id;
+end;
+$$;
+
+revoke all on function public.admin_create_tenant_contract(uuid, integer, date, date, numeric, numeric, numeric) from public, anon, authenticated;
+grant execute on function public.admin_create_tenant_contract(uuid, integer, date, date, numeric, numeric, numeric) to service_role;
+
+-- Soft-delete tenant accounts so their billing and payment history stays intact.
+create or replace function public.admin_archive_tenant(p_tenant_id uuid, p_archived boolean)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  previous_room_id uuid;
+  confirmed_at timestamptz;
+begin
+  select room_id, email_confirmed_at
+    into previous_room_id, confirmed_at
+    from public.users
+    where id = p_tenant_id and role = 'tenant'
+    for update;
+  if not found then raise exception 'Tenant profile not found' using errcode = 'P0002'; end if;
+  if confirmed_at is null then raise exception 'Tenant email must be confirmed first' using errcode = '42501'; end if;
+
+  update public.users
+    set account_status = case when p_archived then 'archived' else 'active' end,
+        room_id = case when p_archived then null else room_id end
+    where id = p_tenant_id;
+
+  if p_archived and previous_room_id is not null then
+    update public.tenant_contracts
+      set contract_status = 'ended',
+          end_date = greatest(start_date, least(end_date, current_date))
+      where tenant_id = p_tenant_id and room_id = previous_room_id and contract_status = 'active';
+    update public.rooms
+      set status = case
+        when exists (select 1 from public.users where room_id = previous_room_id and email_confirmed_at is not null and account_status = 'active') then 'occupied'
+        else 'vacant'
+      end
+      where id = previous_room_id;
+  end if;
+end;
+$$;
+
+revoke all on function public.admin_archive_tenant(uuid, boolean) from public, anon, authenticated;
+grant execute on function public.admin_archive_tenant(uuid, boolean) to service_role;
+
+
 -- Backfill only confirmed Auth accounts. Existing unconfirmed profiles receive a null
 -- email_confirmed_at above and are excluded by the admin tenant queries.
 insert into public.users (
@@ -459,6 +631,50 @@ alter table public.tenant_bills add column if not exists water_rate_per_person n
 alter table public.tenant_bills add column if not exists occupant_count integer not null default 1;
 alter table public.tenant_bills add column if not exists published_at timestamptz;
 alter table public.tenant_bills add column if not exists amount_paid numeric(10,2) not null default 0;
+
+-- Record owner-received cash and update its bill balance in one transaction.
+create or replace function public.admin_record_cash_payment(p_bill_id uuid, p_amount numeric)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  tenant_id uuid;
+  bill_total numeric;
+  paid_so_far numeric;
+  remaining numeric;
+  payment_id uuid;
+  payment_time timestamptz := now();
+begin
+  if p_amount is null or p_amount <= 0 then
+    raise exception 'Payment amount must be greater than zero' using errcode = '22023';
+  end if;
+  select user_id, total_amount, amount_paid
+    into tenant_id, bill_total, paid_so_far
+    from public.tenant_bills
+    where id = p_bill_id
+    for update;
+  if not found then raise exception 'Bill not found' using errcode = 'P0002'; end if;
+  remaining := greatest(0, bill_total - coalesce(paid_so_far, 0));
+  if p_amount > remaining then
+    raise exception 'Payment exceeds the remaining balance' using errcode = '22023';
+  end if;
+
+  insert into public.payments (bill_id, user_id, amount, method, status, paid_at, verified_at)
+    values (p_bill_id, tenant_id, p_amount, 'cash', 'verified', payment_time, payment_time)
+    returning id into payment_id;
+  update public.tenant_bills
+    set amount_paid = coalesce(paid_so_far, 0) + p_amount,
+        status = case when coalesce(paid_so_far, 0) + p_amount >= bill_total then 'paid' else 'partially_paid' end,
+        paid_at = case when coalesce(paid_so_far, 0) + p_amount >= bill_total then payment_time else null end
+    where id = p_bill_id;
+  return payment_id;
+end;
+$$;
+
+revoke all on function public.admin_record_cash_payment(uuid, numeric) from public, anon, authenticated;
+grant execute on function public.admin_record_cash_payment(uuid, numeric) to service_role;
 
 create table if not exists public.billing_batches (
   id uuid primary key default gen_random_uuid(),

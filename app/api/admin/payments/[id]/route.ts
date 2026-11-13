@@ -24,3 +24,16 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   }
   return NextResponse.json({ ok: true });
 }
+
+
+export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const supabase = await createAdminSupabaseClient();
+  const { data: payment, error: readError } = await supabase.from("payments").select("id, status").eq("id", id).maybeSingle();
+  if (readError) return NextResponse.json({ error: readError.message }, { status: 500 });
+  if (!payment) return NextResponse.json({ error: "Payment not found" }, { status: 404 });
+  if (payment.status !== "pending_verification") return NextResponse.json({ error: "Rejected and verified payment history is retained" }, { status: 409 });
+  const { error } = await supabase.from("payments").delete().eq("id", id);
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ ok: true });
+}

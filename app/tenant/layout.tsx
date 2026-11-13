@@ -31,11 +31,11 @@ export default function TenantLayout({ children }: { children: React.ReactNode }
 
       const { data: userData } = await supabase
         .from("users")
-        .select("full_name, registration_status, role")
+        .select("full_name, registration_status, role, account_status")
         .eq("id", session.user.id)
         .single();
 
-      if (!userData || userData.role !== "tenant" || userData.registration_status !== "approved") {
+      if (!userData || userData.role !== "tenant" || userData.registration_status !== "approved" || userData.account_status === "archived") {
         await supabase.auth.signOut();
         router.push("/login");
         return;

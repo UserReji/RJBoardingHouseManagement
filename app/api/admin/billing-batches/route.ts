@@ -31,7 +31,7 @@ export async function POST(request: Request) {
   if (new Set(roomIds).size !== roomIds.length) return NextResponse.json({ error: "A room appears more than once." }, { status: 400 });
   const [{ data: rooms, error: roomError }, { data: tenants, error: tenantError }] = await Promise.all([
     supabase.from("rooms").select("id, room_number, monthly_rent, occupant_count").in("id", roomIds),
-    supabase.from("users").select("id, room_id, billing_credit").eq("role", "tenant").eq("registration_status", "approved").not("email_confirmed_at", "is", null).in("room_id", roomIds),
+    supabase.from("users").select("id, room_id, billing_credit").eq("role", "tenant").eq("registration_status", "approved").eq("account_status", "active").not("email_confirmed_at", "is", null).in("room_id", roomIds),
   ]);
   if (roomError || tenantError) return NextResponse.json({ error: roomError?.message ?? tenantError?.message }, { status: 500 });
   const roomMap = new Map((rooms ?? []).map((r: any) => [r.id, r]));

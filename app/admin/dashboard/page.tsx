@@ -23,7 +23,7 @@ export default async function AdminDashboard() {
 
   const [rooms, tenants, bills, payments, concerns] = await Promise.all([
     supabase.from("rooms").select("id, status", { count: "exact" }),
-    supabase.from("users").select("id, registration_status", { count: "exact" }).eq("role", "tenant").not("email_confirmed_at", "is", null),
+    supabase.from("users").select("id, registration_status", { count: "exact" }).eq("role", "tenant").eq("account_status", "active").not("email_confirmed_at", "is", null),
     supabase.from("tenant_bills").select("id, status, total_amount", { count: "exact" }),
     supabase.from("payments").select("id, status", { count: "exact" }),
     supabase.from("concerns").select("id, status", { count: "exact" }),

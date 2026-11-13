@@ -6,10 +6,11 @@ import toast from "react-hot-toast";
 import { Save } from "lucide-react";
 
 export default function EditRoomForm({
-  roomId, initialPrice, initialDescription,
-}: { roomId: string; initialPrice: number; initialDescription: string }) {
+  roomId, initialRoomNumber, initialPrice, initialDescription,
+}: { roomId: string; initialRoomNumber: number; initialPrice: number; initialDescription: string }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [roomNumber, setRoomNumber] = useState(initialRoomNumber);
   const [price, setPrice] = useState(initialPrice);
   const [description, setDescription] = useState(initialDescription);
   const [saving, setSaving] = useState(false);
@@ -20,16 +21,21 @@ export default function EditRoomForm({
     const res = await fetch(`/api/admin/rooms/${roomId}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ price, description }),
+      body: JSON.stringify({ room_number: roomNumber, price, description }),
     });
+    const result = await res.json().catch(() => ({}));
     setSaving(false);
-    if (!res.ok) { toast.error("Save failed"); return; }
+    if (!res.ok) { toast.error(result.error ?? "Save failed"); return; }
     toast.success("Saved");
     startTransition(() => router.refresh());
   };
 
   return (
     <form onSubmit={save} className="space-y-4">
+      <div>
+        <label className="label">Room number</label>
+        <input type="number" min="1" step="1" value={roomNumber} onChange={(e) => setRoomNumber(Number(e.target.value))} className="input" />
+      </div>
       <div>
         <label className="label">Monthly rent (₱)</label>
         <input

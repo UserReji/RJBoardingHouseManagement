@@ -52,11 +52,16 @@ export default function LoginPage() {
 
         const { data: userData, error: userError } = await supabase
           .from("users")
-          .select("registration_status, role")
+          .select("registration_status, role, account_status")
           .eq("id", authData.user.id)
           .single();
 
         if (userError || !userData) { toast.error("User profile not found"); return; }
+        if (userData.account_status === "archived") {
+          await supabase.auth.signOut();
+          toast.error("This tenant account is archived. Contact the admin if you need access.");
+          return;
+        }
         if (userData.registration_status === "pending") {
           toast.error("Your registration is pending admin approval");
           return;

@@ -18,34 +18,15 @@ export async function POST(
 
   const supabase = await createAdminSupabaseClient();
 
-  // 1. confirm room is vacant
-  const { data: room } = await supabase
-    .from("rooms")
-    .select("id, status")
-    .eq("id", roomId)
-    .single();
-  if (!room) return NextResponse.json({ error: "Room not found" }, { status: 404 });
-  if (room.status !== "vacant") {
-    return NextResponse.json({ error: "Room is not vacant" }, { status: 409 });
+  const { error } = await supabase.rpc("admin_set_tenant_room", {
+    p_tenant_id: id,
+    p_room_id: roomId,
+    p_approve: true,
+  });
+  if (error) {
+    const status = error.code === "P0002" ? 404 : error.code === "23505" ? 409 : 400;
+    return NextResponse.json({ error: error.message }, { status });
   }
-
-  // 2. approve + assign
-  const { data: approvedTenant, error: userErr } = await supabase
-    .from("users")
-    .update({ registration_status: "approved", room_id: roomId })
-    .eq("id", id)
-    .not("email_confirmed_at", "is", null)
-    .select("id")
-    .maybeSingle();
-  if (userErr) return NextResponse.json({ error: userErr.message }, { status: 500 });
-  if (!approvedTenant) return NextResponse.json({ error: "Confirmed tenant not found" }, { status: 404 });
-
-  // 3. mark room occupied
-  const { error: roomErr } = await supabase
-    .from("rooms")
-    .update({ status: "occupied" })
-    .eq("id", roomId);
-  if (roomErr) return NextResponse.json({ error: roomErr.message }, { status: 500 });
 
   return NextResponse.json({ ok: true });
 }
